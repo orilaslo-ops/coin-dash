@@ -16,6 +16,7 @@ class CoinDash extends Phaser.Scene {
     this.invulnerableUntil = 0;
     this.finished = false;
     this.paused = false;
+    this.countingDown = false;
     this.deadline = this.time.now + c.roundSeconds * 1000;
     // Power-up timestamps; all are shifted forward on resume so pausing freezes them.
     this.powerupNextAt = this.time.now + c.powerupEverySeconds * 1000;
@@ -38,7 +39,7 @@ class CoinDash extends Phaser.Scene {
       const left = this.powerupUntil - this.time.now;
       this.shieldRing.setPosition(this.player.x, this.player.y)
         .setVisible(this.activePowerup === 'shield')
-        .setAlpha(!this.paused && left < 1000 && Math.floor(left / 125) % 2 ? 0.25 : 1);
+        .setAlpha(!this.paused && !this.countingDown && left < 1000 && Math.floor(left / 125) % 2 ? 0.25 : 1);
     });
     this.player.body.setCollideWorldBounds(true);
     this.coin = this.add.circle(100, 100, 9, c.colors.coin).setStrokeStyle(2, 0x2b2a33);
@@ -93,6 +94,12 @@ class CoinDash extends Phaser.Scene {
     ).setOrigin(0.5);
     this.pauseBox.setVisible(false).setDepth(10);
     this.pauseText.setVisible(false).setDepth(11);
+    this.countdownText = this.add.text(c.width / 2, c.height / 2, '',
+      { fontFamily: HAND_FONT, fontSize: '72px', color: '#2b2a33' }).setOrigin(0.5).setDepth(11);
+    // The round starts frozen and only begins once the countdown ends.
+    this.drawHud(this.time.now);
+    this.freeze();
+    this.startCountdown();
   }
 
   loseLife() {
@@ -139,23 +146,50 @@ class CoinDash extends Phaser.Scene {
       onComplete: () => label.destroy() });
   }
 
+  // Freezing stops physics; thawing shifts every timer forward by the frozen time.
+  freeze() {
+    this.frozenAt = this.time.now;
+    this.physics.pause();
+  }
+
+  thaw() {
+    const frozenFor = this.time.now - this.frozenAt;
+    this.deadline += frozenFor;
+    this.powerupNextAt += frozenFor;
+    this.powerupExpiresAt += frozenFor;
+    this.powerupUntil += frozenFor;
+    this.chaserAt += frozenFor;
+    this.physics.resume();
+  }
+
   togglePause() {
-    if (this.finished) return;
+    if (this.finished || this.countingDown) return;
     this.paused = !this.paused;
-    if (this.paused) {
-      this.pausedAt = this.time.now;
-      this.physics.pause();
-    } else {
-      const pausedFor = this.time.now - this.pausedAt;
-      this.deadline += pausedFor;
-      this.powerupNextAt += pausedFor;
-      this.powerupExpiresAt += pausedFor;
-      this.powerupUntil += pausedFor;
-      this.chaserAt += pausedFor;
-      this.physics.resume();
-    }
+    // Resuming goes through the countdown, which thaws the game when it ends.
+    if (this.paused) this.freeze();
+    else this.startCountdown();
     this.pauseBox.setVisible(this.paused);
     this.pauseText.setVisible(this.paused);
+  }
+
+  startCountdown() {
+    let left = COIN_DASH.countdownSeconds;
+    this.countingDown = true;
+    this.countdownText.setText(left).setVisible(true);
+    this.time.addEvent({
+      delay: 1000,
+      repeat: left - 1,
+      callback: () => {
+        left--;
+        if (left > 0) {
+          this.countdownText.setText(left);
+          return;
+        }
+        this.countdownText.setVisible(false);
+        this.countingDown = false;
+        this.thaw();
+      }
+    });
   }
 
   showPowerup() {
@@ -231,7 +265,7 @@ class CoinDash extends Phaser.Scene {
   }
 
   update(time, delta) {
-    if (this.finished || this.paused) return;
+    if (this.finished || this.paused || this.countingDown) return;
     const now = this.time.now;
     if (!this.powerup.visible && now >= this.powerupNextAt) this.showPowerup();
     if (this.powerup.visible && now >= this.powerupExpiresAt) this.hidePowerup();
@@ -246,13 +280,18 @@ class CoinDash extends Phaser.Scene {
       * (this.activePowerup === 'speed' ? COIN_DASH.powerups.speed.multiplier : 1);
     const direction = new Phaser.Math.Vector2(dx, dy).normalize().scale(speed);
     this.player.body.setVelocity(direction.x, direction.y);
+    if (this.drawHud(now) === 0) this.finish('Time is up!');
+  }
+
+  // Returns the seconds left so update() can end the round.
+  drawHud(now) {
     const seconds = Math.max(0, Math.ceil((this.deadline - now) / 1000));
     const label = COIN_DASH.difficulties[difficulty].label;
     const status = this.activePowerup
       ? `      ${COIN_DASH.powerups[this.activePowerup].label}: ${Math.ceil((this.powerupUntil - now) / 1000)}s`
       : '';
     this.hud.setText(`Coins: ${this.score}      Lives: ${this.lives}      Time: ${seconds}s      ${label}${status}`);
-    if (seconds === 0) this.finish('Time is up!');
+    return seconds;
   }
 
   finish(reason) {

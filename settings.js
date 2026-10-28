@@ -3,6 +3,7 @@ window.COIN_DASH = {
   width: 800,
   height: 500,
   roundSeconds: 45,
+  countdownSeconds: 3, // 3-2-1 before the round starts and after unpausing
   playerSpeed: 240,
   // Difficulty presets: press 1/2/3 in game to switch. Each preset sets drone count and speed.
   difficulty: 'normal',
