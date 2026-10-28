@@ -11,6 +11,11 @@ window.COIN_DASH = {
     normal: { label: 'Normal', droneCount: 3, droneSpeed: 105 },
     hard:   { label: 'Hard',   droneCount: 5, droneSpeed: 140 }
   },
+  // Defaults for the settings menu (O in game); the player's choice is remembered in the browser.
+  // keyScheme: 'both', 'arrows' or 'wasd'. sound only stores the choice until sound effects exist.
+  sound: true,
+  keyScheme: 'both',
+  keySchemeLabels: { both: 'Arrows + WASD', arrows: 'Arrows', wasd: 'WASD' },
   startLives: 3,
   hitInvulnerableMs: 1500,
   chaserSpeed: 130,
