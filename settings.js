@@ -28,6 +28,6 @@ window.COIN_DASH = {
   },
   colors: {
     background: 0xf4efe1, player: 0x5f9c8f, coin: 0xd8b04a, drone: 0xc4574d,
-    powerups: { speed: 0x7fb2ff, shield: 0xc9a7ff, slow: 0x9cf28a, time: 0xffffff }
+    powerups: { speed: 0x2f6fd6, shield: 0x8657c9, slow: 0x3e9a4b, time: 0xe08a2e }
   }
 };
