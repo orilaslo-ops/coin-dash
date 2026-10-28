@@ -5,3 +5,7 @@ header > p:first-child { color: #4f7f76; font-size: 12px; letter-spacing: .15em;
 h1 { margin: 0; font-size: 40px; font-family: "Chalkboard SE", "Comic Sans MS", "Marker Felt", cursive; }
 #game { border: 2px solid #2b2a33; border-radius: 14px 9px 12px 8px; overflow: hidden; }
 canvas { display: block; }
+kbd { display: inline-block; min-width: 1.6em; margin: 0 1px; padding: 0 .35em; text-align: center;
+  background: #fffaf0; color: #2b2a33; border: 1.5px solid #2b2a33; border-bottom-width: 3px;
+  border-radius: 5px 4px 6px 3px; font: 14px/1.5 "Chalkboard SE", "Comic Sans MS", "Marker Felt", cursive; }
+kbd:nth-of-type(odd) { transform: rotate(-2deg); }
