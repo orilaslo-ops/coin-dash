@@ -137,6 +137,8 @@ class CoinDash extends Phaser.Scene {
       const angle = (35 + i * 105) * Math.PI / 180;
       drone.body.setVelocity(Math.cos(angle) * preset.droneSpeed, Math.sin(angle) * preset.droneSpeed);
     }
+    this.spawnPatrols(preset.patrolCount || 0);
+    this.spawnBlinkers(preset.blinkCount || 0);
     this.physics.add.overlap(this.player, this.coin, () => {
       if (this.finished) return;
       this.score++;
@@ -249,13 +251,14 @@ class CoinDash extends Phaser.Scene {
       ['slow', `${p.slow.label}: drones move at ${p.slow.multiplier * 100}% speed for ${p.slow.seconds}s`],
       ['time', `Extra time: +${p.time.bonus}s on the clock`]
     ];
-    const box = this.add.rectangle(c.width / 2, c.height / 2 + 2, 600, 400, c.colors.background, 0.97)
+    const box = this.add.rectangle(c.width / 2, c.height / 2 + 6, 600, 420, c.colors.background, 0.97)
       .setStrokeStyle(2, 0x2b2a33);
     const body = this.add.text(left, 92, [
       'Move with the arrow keys or WASD.',
       `Collect as many coins as you can in ${c.roundSeconds} seconds.`,
       'Avoid the drones! Red squares bounce around the field,',
       `and after ${c.chaserDelaySeconds}s a red diamond starts chasing you.`,
+      'A red bar patrols the faint loop, and a red circle teleports.',
       `A hit costs one of your ${c.startLives} lives, then you blink and are safe`,
       `for ${c.hitInvulnerableMs / 1000}s. Lose them all and the round ends.`,
       `Power-up stars appear every ${c.powerupEverySeconds}s and vanish after ${c.powerupLifetimeSeconds}s:`
@@ -351,6 +354,7 @@ class CoinDash extends Phaser.Scene {
     this.powerupExpiresAt += frozenFor;
     this.powerupUntil += frozenFor;
     this.chaserAt += frozenFor;
+    this.blinkers.forEach(b => { b.phaseAt += frozenFor; });
     this.physics.resume();
   }
 
@@ -428,6 +432,100 @@ class CoinDash extends Phaser.Scene {
     this.drones.getChildren().forEach(d => d.body.velocity.scale(factor));
   }
 
+  // Patrol drones follow COIN_DASH.patrolPath in a loop; a faint line shows the route.
+  spawnPatrols(count) {
+    const c = COIN_DASH;
+    const path = c.patrolPath;
+    this.patrols = [];
+    if (count === 0) return;
+    const route = this.add.graphics().lineStyle(2, c.colors.drone, 0.25);
+    route.strokePoints(path.map(([x, y]) => ({ x, y })), true, true);
+    for (let i = 0; i < count; i++) {
+      const start = Math.floor(i * path.length / count);
+      const [x, y] = path[start];
+      const patrol = this.add.rectangle(x, y, 32, 16, c.colors.drone).setStrokeStyle(2, 0x2b2a33);
+      this.physics.add.existing(patrol);
+      patrol.target = (start + 1) % path.length;
+      this.patrols.push(patrol);
+    }
+    this.physics.add.overlap(this.player, this.patrols, () => {
+      if (this.activePowerup === 'shield') return;
+      this.loseLife();
+    });
+  }
+
+  movePatrols(delta) {
+    const c = COIN_DASH;
+    const speed = c.patrolSpeed * (this.activePowerup === 'slow' ? c.powerups.slow.multiplier : 1);
+    this.patrols.forEach(patrol => {
+      let [tx, ty] = c.patrolPath[patrol.target];
+      // Reaching a corner (within one frame's step) moves on to the next point of the loop.
+      if (Phaser.Math.Distance.Between(patrol.x, patrol.y, tx, ty) <= Math.max(3, speed * delta / 1000)) {
+        patrol.target = (patrol.target + 1) % c.patrolPath.length;
+        [tx, ty] = c.patrolPath[patrol.target];
+      }
+      const v = new Phaser.Math.Vector2(tx - patrol.x, ty - patrol.y).normalize().scale(speed);
+      patrol.body.setVelocity(v.x, v.y);
+    });
+  }
+
+  // Blink drones join the bouncing drones group, so slow and shield work on them as usual.
+  // Each one cycles: solid -> hidden -> faded warning at the new spot -> solid again.
+  spawnBlinkers(count) {
+    const c = COIN_DASH;
+    this.blinkers = [];
+    for (let i = 0; i < count; i++) {
+      const x = c.width - 120 - i * 80, y = c.height - 80;
+      const blinker = this.add.circle(x, y, 14, c.colors.drone).setStrokeStyle(2, 0x2b2a33);
+      this.drones.add(blinker);
+      blinker.body.setCircle(14).setCollideWorldBounds(true).setBounce(1, 1);
+      this.launchBlinker(blinker);
+      blinker.phase = 'solid';
+      // Stagger several blinkers so they do not all jump at once.
+      blinker.phaseAt = this.time.now + (c.blinkVisibleSeconds + i * 1.5) * 1000;
+      this.blinkers.push(blinker);
+    }
+  }
+
+  launchBlinker(blinker) {
+    const c = COIN_DASH;
+    const speed = c.difficulties[difficulty].droneSpeed
+      * (this.activePowerup === 'slow' ? c.powerups.slow.multiplier : 1);
+    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+    blinker.body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+  }
+
+  updateBlinkers(now) {
+    const c = COIN_DASH;
+    this.blinkers.forEach(b => {
+      if (now < b.phaseAt) return;
+      if (b.phase === 'solid') {
+        b.phase = 'hidden';
+        b.setVisible(false);
+        b.body.stop();
+        b.body.setEnable(false);
+        b.phaseAt = now + c.blinkHiddenMs;
+      } else if (b.phase === 'hidden') {
+        // Reappear well away from the player so a jump never lands on them.
+        let x, y;
+        do {
+          x = Phaser.Math.Between(40, c.width - 40);
+          y = Phaser.Math.Between(80, c.height - 40);
+        } while (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 150);
+        b.setPosition(x, y).setVisible(true).setAlpha(0.3);
+        b.phase = 'warn';
+        b.phaseAt = now + c.blinkWarnMs;
+      } else {
+        b.setAlpha(1);
+        b.body.setEnable(true);
+        b.body.reset(b.x, b.y);
+        this.launchBlinker(b);
+        b.phase = 'solid';
+        b.phaseAt = now + c.blinkVisibleSeconds * 1000;
+      }
+    });
+  }
+
   spawnChaser() {
     if (this.finished) return;
     const c = COIN_DASH;
@@ -464,6 +562,8 @@ class CoinDash extends Phaser.Scene {
     if (this.activePowerup && now >= this.powerupUntil) this.endPowerup();
     if (!this.chaser && now >= this.chaserAt) this.spawnChaser();
     if (this.chaser) this.steerChaser(delta);
+    this.movePatrols(delta);
+    this.updateBlinkers(now);
     const arrows = playerSettings.keyScheme !== 'wasd';
     const wasd = playerSettings.keyScheme !== 'arrows';
     const held = (arrow, letter) => (arrows && arrow.isDown) || (wasd && letter.isDown);
