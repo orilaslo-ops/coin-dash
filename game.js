@@ -4,6 +4,14 @@ const HAND_FONT = '"Chalkboard SE", "Comic Sans MS", "Marker Felt", cursive';
 // Chosen preset survives restarts; switching keys restart the round.
 let difficulty = COIN_DASH.difficulty;
 const DIFFICULTY_KEYS = { ONE: 'easy', TWO: 'normal', THREE: 'hard' };
+// Hand-drawn circle: radius jitters per point, so each redraw looks slightly different.
+function wobblyCircle(g, r, jitter) {
+  const points = Array.from({ length: 16 }, (_, i) => {
+    const a = i * Math.PI / 8, rr = r + Phaser.Math.FloatBetween(-jitter, jitter);
+    return { x: Math.cos(a) * rr, y: Math.sin(a) * rr };
+  });
+  return g.strokePoints(points, true, true);
+}
 
 class CoinDash extends Phaser.Scene {
   constructor() { super('CoinDash'); }
@@ -36,8 +44,9 @@ class CoinDash extends Phaser.Scene {
     this.player = this.add.rectangle(c.width / 2, c.height / 2, 24, 24);
     this.physics.add.existing(this.player);
     // A separate ring shows the shield, so the player's own look is untouched.
-    this.shieldRing = this.add.circle(0, 0, 22).setStrokeStyle(3, c.colors.powerups.shield)
-      .setVisible(false);
+    this.shieldRing = this.add.graphics().setVisible(false);
+    this.speedLines = this.add.graphics().setVisible(false);
+    this.drawShieldAndSpeedLines();
     this.events.on('postupdate', () => {
       const left = this.powerupUntil - this.time.now;
       this.shieldRing.setPosition(this.player.x, this.player.y)
@@ -70,7 +79,9 @@ class CoinDash extends Phaser.Scene {
         this.tweens.add({ targets: this.glint, alpha: 1, scale: 1, duration: 140, yoyo: true });
       } });
     this.placeCoin();
-    this.powerup = this.add.star(0, 0, 5, 6, 13, 0xffffff).setVisible(false);
+    // The star keeps the hit area but is never seen; the sticker below bobs and blinks instead.
+    this.powerup = this.add.star(0, 0, 5, 6, 13, 0xffffff).setVisible(false).setAlpha(0);
+    this.powerupLook = this.add.graphics().setVisible(false);
     this.physics.add.existing(this.powerup);
     this.powerup.body.setCircle(12, 1, 1).setEnable(false);
     this.drones = this.physics.add.group();
@@ -84,6 +95,32 @@ class CoinDash extends Phaser.Scene {
       const angle = (35 + i * 105) * Math.PI / 180;
       drone.body.setVelocity(Math.cos(angle) * preset.droneSpeed, Math.sin(angle) * preset.droneSpeed);
     }
+    // One sleepy "z" per drone, shown while Slow is active.
+    this.sleepZs = this.drones.getChildren().map(() => this.add.text(0, 0, 'z',
+      { fontFamily: HAND_FONT, fontSize: '15px', color: '#2b2a33' }).setOrigin(0.5).setVisible(false));
+    const drawPowerupFx = () => {
+      const now = this.time.now;
+      const left = this.powerupExpiresAt - now;
+      // Hold everything still while paused or after the round ends.
+      const still = this.paused || this.finished;
+      const blinkOff = !still && left < 2000 && Math.floor(left / 125) % 2;
+      this.powerupLook.setVisible(this.powerup.visible && !blinkOff);
+      if (still) return;
+      // Bob from the time left (shifted on resume), so pausing causes no jump.
+      this.powerupLook.setPosition(this.powerup.x, this.powerup.y + Math.sin(left / 250) * 3);
+      if (this.game.loop.frame % 6 === 0) this.drawShieldAndSpeedLines();
+      const v = this.player.body.velocity;
+      this.speedLines.setVisible(this.activePowerup === 'speed' && (v.x !== 0 || v.y !== 0))
+        .setPosition(this.player.x, this.player.y);
+      if (v.x || v.y) this.speedLines.setRotation(Math.atan2(v.y, v.x));
+      this.drones.getChildren().forEach((d, i) => {
+        const t = ((now + i * 400) % 1200) / 1200;
+        this.sleepZs[i].setVisible(this.activePowerup === 'slow')
+          .setPosition(d.x + 6 + t * 8, d.y - 20 - t * 12).setAlpha(1 - t);
+      });
+    };
+    this.events.on('postupdate', drawPowerupFx);
+    this.events.once('shutdown', () => this.events.off('postupdate', drawPowerupFx));
     this.physics.add.overlap(this.player, this.coin, () => {
       if (this.finished) return;
       this.score++;
@@ -92,6 +129,7 @@ class CoinDash extends Phaser.Scene {
     });
     this.physics.add.overlap(this.player, this.powerup, () => {
       if (this.finished || !this.powerup.visible) return;
+      this.pickupEffect(this.powerup.x, this.powerup.y, this.powerup.kind);
       this.hidePowerup();
       this.startPowerup(this.powerup.kind);
     });
@@ -165,6 +203,63 @@ class CoinDash extends Phaser.Scene {
       onComplete: () => label.destroy() });
   }
 
+  // Ink-splash burst plus a handwritten label for the picked-up power-up.
+  pickupEffect(x, y, kind) {
+    const color = COIN_DASH.colors.powerups[kind];
+    for (let i = 0; i < 8; i++) {
+      const angle = i * Math.PI / 4 + Math.random() * 0.4;
+      const dist = Phaser.Math.Between(18, 34);
+      const blot = this.add.circle(x, y, Phaser.Math.Between(2, 4), i % 2 ? color : 0x2b2a33);
+      this.tweens.add({ targets: blot, x: x + Math.cos(angle) * dist, y: y + Math.sin(angle) * dist,
+        alpha: 0, scale: 0.4, duration: 450, onComplete: () => blot.destroy() });
+    }
+    const text = kind === 'time' ? `+${COIN_DASH.powerups.time.bonus}s` : `${kind.toUpperCase()}!`;
+    const label = this.add.text(x, y - 12, text, { fontFamily: HAND_FONT, fontSize: '20px',
+      color: `#${color.toString(16).padStart(6, '0')}`, stroke: '#2b2a33', strokeThickness: 1 })
+      .setOrigin(0.5).setAngle(-6);
+    this.tweens.add({ targets: label, y: y - 50, alpha: 0, duration: 900,
+      onComplete: () => label.destroy() });
+  }
+
+  // Redrawn every few frames so the lines "boil"; the shield's blink alpha is set elsewhere.
+  drawShieldAndSpeedLines() {
+    const shield = COIN_DASH.colors.powerups.shield;
+    wobblyCircle(this.shieldRing.clear().lineStyle(3, shield), 22, 1.5);
+    wobblyCircle(this.shieldRing.lineStyle(1.5, 0x2b2a33, 0.7), 26, 1.5);
+    this.speedLines.clear().lineStyle(2, 0x2b2a33, 0.6);
+    for (const y of [-7, 0, 7]) {
+      const x = -16 - Math.random() * 4;
+      this.speedLines.lineBetween(x, y, x - 10 - Math.random() * 8, y + Phaser.Math.FloatBetween(-1, 1));
+    }
+  }
+
+  // Round paper sticker with hatched shading, a tape strip and a doodled icon per kind.
+  drawSticker(kind) {
+    const color = COIN_DASH.colors.powerups[kind];
+    const g = this.powerupLook.clear().fillStyle(0xfffdf5).fillCircle(0, 0, 15).lineStyle(1.5, color, 0.6);
+    for (let a = 0.15; a < 1.5; a += 0.4) {
+      const x = Math.cos(a) * 13, y = Math.sin(a) * 13;
+      g.lineBetween(x, y, x - 4, y - 4);
+    }
+    wobblyCircle(g.lineStyle(2, 0x2b2a33), 15, 1);
+    g.fillStyle(color).lineStyle(1.5, 0x2b2a33);
+    if (kind === 'speed') {
+      const bolt = [{ x: 3, y: -11 }, { x: -6, y: 1 }, { x: 0, y: 1 }, { x: -3, y: 11 }, { x: 6, y: -2 }, { x: 0, y: -2 }];
+      g.fillPoints(bolt, true).strokePoints(bolt, true);
+    } else if (kind === 'shield') {
+      const crest = [{ x: 0, y: -10 }, { x: 8, y: -6 }, { x: 7, y: 3 }, { x: 0, y: 10 }, { x: -7, y: 3 }, { x: -8, y: -6 }];
+      g.fillPoints(crest, true).strokePoints(crest, true).lineBetween(0, -7, 0, 7);
+    } else if (kind === 'slow') {
+      g.lineBetween(-8, 6, -11, -2).lineBetween(-6, 6, -6, -1)
+        .fillRect(-10, 5, 20, 3).strokeRect(-10, 5, 20, 3)
+        .fillCircle(2, -1, 6).strokeCircle(2, -1, 6).strokeCircle(2, -1, 2.5);
+    } else {
+      g.fillStyle(0x2b2a33).fillRect(-2, -11, 4, 3).fillStyle(color)
+        .fillCircle(0, 1, 8).strokeCircle(0, 1, 8).lineBetween(0, 1, 0, -4).lineBetween(0, 1, 4, 1);
+    }
+    g.fillStyle(0xe9dfb0, 0.8).fillPoints([{ x: -8, y: -18 }, { x: 8, y: -20 }, { x: 9, y: -14 }, { x: -7, y: -12 }], true);
+  }
+
   togglePause() {
     if (this.finished) return;
     this.paused = !this.paused;
@@ -193,7 +288,7 @@ class CoinDash extends Phaser.Scene {
     } while (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 120);
     // Only one type exists so far; new types in settings.js join the random pick.
     this.powerup.kind = Phaser.Utils.Array.GetRandom(Object.keys(c.powerups));
-    this.powerup.setFillStyle(c.colors.powerups[this.powerup.kind]);
+    this.drawSticker(this.powerup.kind);
     this.powerup.setPosition(x, y).setVisible(true);
     this.powerup.body.reset(x, y);
     this.powerup.body.setEnable(true);
