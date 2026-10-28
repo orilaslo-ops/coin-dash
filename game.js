@@ -86,13 +86,75 @@ class CoinDash extends Phaser.Scene {
         this.scene.restart();
       });
     }
-    this.input.keyboard.on('keydown-P', () => this.togglePause());
+    // While help is open, P does nothing; closing help resumes the game.
+    this.input.keyboard.on('keydown-P', () => { if (!this.helpOpen) this.togglePause(); });
     this.pauseBox = this.add.rectangle(c.width / 2, c.height / 2, 460, 150, 0x0a1120, 0.95);
     this.pauseText = this.add.text(c.width / 2, c.height / 2, 'Paused\nPress P to resume',
       { font: '24px monospace', color: '#ffffff', align: 'center', lineSpacing: 12 }
     ).setOrigin(0.5);
     this.pauseBox.setVisible(false).setDepth(10);
     this.pauseText.setVisible(false).setDepth(11);
+    this.helpOpen = false;
+    this.helpPaused = false;
+    this.input.keyboard.on('keydown-H', () => this.toggleHelp());
+    this.buildHelp();
+  }
+
+  // Instructions overlay; numbers come from settings.js so the text stays true when tuning changes.
+  buildHelp() {
+    const c = COIN_DASH;
+    const p = c.powerups;
+    const style = { fontFamily: HAND_FONT, fontSize: '16px', color: '#2b2a33', lineSpacing: 4 };
+    const left = c.width / 2 - 270;
+    const rows = [
+      ['speed', `${p.speed.label}: move ${p.speed.multiplier}x faster for ${p.speed.seconds}s`],
+      ['shield', `${p.shield.label}: drones cannot hurt you for ${p.shield.seconds}s`],
+      ['slow', `${p.slow.label}: drones move at ${p.slow.multiplier * 100}% speed for ${p.slow.seconds}s`],
+      ['time', `Extra time: +${p.time.bonus}s on the clock`]
+    ];
+    const box = this.add.rectangle(c.width / 2, c.height / 2 + 2, 600, 400, c.colors.background, 0.97)
+      .setStrokeStyle(2, 0x2b2a33);
+    const body = this.add.text(left, 92, [
+      'Move with the arrow keys or WASD.',
+      `Collect as many coins as you can in ${c.roundSeconds} seconds.`,
+      'Avoid the drones! Red squares bounce around the field,',
+      `and after ${c.chaserDelaySeconds}s a red diamond starts chasing you.`,
+      `A hit costs one of your ${c.startLives} lives, then you blink and are safe`,
+      `for ${c.hitInvulnerableMs / 1000}s. Lose them all and the round ends.`,
+      `Power-up stars appear every ${c.powerupEverySeconds}s and vanish after ${c.powerupLifetimeSeconds}s:`
+    ].join('\n'), style);
+    const parts = [
+      box,
+      this.add.text(c.width / 2, 58, 'How to play', { ...style, fontSize: '24px' }).setOrigin(0.5, 0),
+      body
+    ];
+    // Rows follow the measured body height, since the hand font's line height varies by system.
+    let y = body.y + body.height + 6;
+    rows.forEach(([kind, text]) => {
+      parts.push(this.add.star(left + 12, y + 11, 5, 4, 9, c.colors.powerups[kind]).setStrokeStyle(1, 0x2b2a33));
+      parts.push(this.add.text(left + 30, y, text, style));
+      y += 26;
+    });
+    parts.push(this.add.text(c.width / 2, y + 10,
+      'P pause · R restart · 1/2/3 difficulty\nPress H to close', { ...style, align: 'center' })
+      .setOrigin(0.5, 0));
+    this.helpParts = parts.map(o => o.setDepth(12).setVisible(false));
+  }
+
+  toggleHelp() {
+    if (this.finished) return;
+    this.helpOpen = !this.helpOpen;
+    // Help reuses pause so every timer freezes, and only resumes if help was what paused the game.
+    if (this.helpOpen && !this.paused) {
+      this.helpPaused = true;
+      this.togglePause();
+    } else if (!this.helpOpen && this.helpPaused) {
+      this.helpPaused = false;
+      this.togglePause();
+    }
+    this.helpParts.forEach(o => o.setVisible(this.helpOpen));
+    this.pauseBox.setVisible(this.paused && !this.helpOpen);
+    this.pauseText.setVisible(this.paused && !this.helpOpen);
   }
 
   loseLife() {
