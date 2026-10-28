@@ -4,6 +4,66 @@ const HAND_FONT = '"Chalkboard SE", "Comic Sans MS", "Marker Felt", cursive';
 // Chosen preset survives restarts; switching keys restart the round.
 let difficulty = COIN_DASH.difficulty;
 const DIFFICULTY_KEYS = { ONE: 'easy', TWO: 'normal', THREE: 'hard' };
+const INK = '#2b2a33';
+
+// Best score per difficulty lives in localStorage; storage can be blocked, so failures just read as 0.
+function bestScore(name) {
+  try { return Number(localStorage.getItem(`coinDash.best.${name}`)) || 0; } catch (e) { return 0; }
+}
+function saveBestScore(name, score) {
+  if (score <= bestScore(name)) return;
+  try { localStorage.setItem(`coinDash.best.${name}`, String(score)); } catch (e) { /* not saved */ }
+}
+
+// First scene: title, difficulty choice, best score and a Start button.
+class StartScreen extends Phaser.Scene {
+  constructor() { super('StartScreen'); }
+
+  create() {
+    const c = COIN_DASH;
+    const names = Object.keys(c.difficulties);
+    this.add.text(c.width / 2, 90, 'Coin Dash',
+      { fontFamily: HAND_FONT, fontSize: '56px', color: INK }).setOrigin(0.5).setAngle(-2);
+    this.add.text(c.width / 2, 185, 'Difficulty',
+      { fontFamily: HAND_FONT, fontSize: '20px', color: INK }).setOrigin(0.5);
+    this.options = names.map((name, i) => {
+      const option = this.add.text(c.width / 2 + (i - (names.length - 1) / 2) * 150, 225,
+        `${i + 1}. ${c.difficulties[name].label}`,
+        { fontFamily: HAND_FONT, fontSize: '22px', color: INK, padding: { x: 10, y: 4 } })
+        .setOrigin(0.5).setInteractive({ useHandCursor: true });
+      option.on('pointerdown', () => this.choose(name));
+      return { name, option };
+    });
+    this.bestText = this.add.text(c.width / 2, 285, '',
+      { fontFamily: HAND_FONT, fontSize: '20px', color: INK }).setOrigin(0.5);
+    const start = this.add.text(c.width / 2, 370, 'Start',
+      { fontFamily: HAND_FONT, fontSize: '30px', color: INK, padding: { x: 28, y: 8 },
+        backgroundColor: `#${c.colors.coin.toString(16).padStart(6, '0')}` })
+      .setOrigin(0.5).setInteractive({ useHandCursor: true });
+    start.on('pointerdown', () => this.startGame());
+    this.add.text(c.width / 2, 440, 'Enter / Space to start · 1 / 2 / 3 or ← → to pick difficulty',
+      { fontFamily: HAND_FONT, fontSize: '16px', color: INK }).setOrigin(0.5).setAlpha(0.7);
+    for (const [key, name] of Object.entries(DIFFICULTY_KEYS)) {
+      this.input.keyboard.on(`keydown-${key}`, () => this.choose(name));
+    }
+    const step = d => this.choose(names[(names.indexOf(difficulty) + d + names.length) % names.length]);
+    this.input.keyboard.on('keydown-LEFT', () => step(-1));
+    this.input.keyboard.on('keydown-RIGHT', () => step(1));
+    this.input.keyboard.on('keydown-ENTER', () => this.startGame());
+    this.input.keyboard.on('keydown-SPACE', () => this.startGame());
+    this.choose(difficulty);
+  }
+
+  choose(name) {
+    difficulty = name;
+    // The chosen preset is bold and fully opaque; the others fade.
+    this.options.forEach(({ name: n, option }) => option
+      .setAlpha(n === name ? 1 : 0.45).setStyle({ fontStyle: n === name ? 'bold' : 'normal' }));
+    this.bestText.setText(`Best on ${COIN_DASH.difficulties[name].label}: ${bestScore(name)} coins`);
+  }
+
+  startGame() { this.scene.start('CoinDash'); }
+}
 
 class CoinDash extends Phaser.Scene {
   constructor() { super('CoinDash'); }
@@ -259,6 +319,7 @@ class CoinDash extends Phaser.Scene {
     if (this.finished) return;
     this.finished = true;
     this.physics.pause();
+    saveBestScore(difficulty, this.score);
     const c = COIN_DASH;
     this.add.rectangle(c.width / 2, c.height / 2, 460, 150, c.colors.background, 0.95)
       .setStrokeStyle(2, 0x2b2a33).setAngle(-1);
@@ -276,5 +337,5 @@ window.coinDashGame = new Phaser.Game({
   backgroundColor: COIN_DASH.colors.background,
   physics: { default: 'arcade', arcade: { debug: false } },
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_HORIZONTALLY },
-  scene: CoinDash
+  scene: [StartScreen, CoinDash]
 });
