@@ -15,7 +15,13 @@ class CoinDash extends Phaser.Scene {
     this.lives = c.startLives;
     this.invulnerableUntil = 0;
     this.finished = false;
+    this.paused = false;
     this.deadline = this.time.now + c.roundSeconds * 1000;
+    // Power-up timestamps; all are shifted forward on resume so pausing freezes them.
+    this.powerupNextAt = this.time.now + c.powerupEverySeconds * 1000;
+    this.powerupExpiresAt = 0;
+    this.activePowerup = null;
+    this.powerupUntil = 0;
     this.physics.world.setBounds(0, 44, c.width, c.height - 44);
     // Slightly uneven pencil grid, drawn once so the paper look stays static.
     const lines = this.add.graphics().lineStyle(1, 0x5a6b8c, 0.25);
@@ -25,11 +31,23 @@ class CoinDash extends Phaser.Scene {
     this.player = this.add.rectangle(c.width / 2, c.height / 2, 24, 24, c.colors.player)
       .setStrokeStyle(2, 0x2b2a33);
     this.physics.add.existing(this.player);
+    // A separate ring shows the shield, so the player's own look is untouched.
+    this.shieldRing = this.add.circle(0, 0, 22).setStrokeStyle(3, c.colors.powerups.shield)
+      .setVisible(false);
+    this.events.on('postupdate', () => {
+      const left = this.powerupUntil - this.time.now;
+      this.shieldRing.setPosition(this.player.x, this.player.y)
+        .setVisible(this.activePowerup === 'shield')
+        .setAlpha(!this.paused && left < 1000 && Math.floor(left / 125) % 2 ? 0.25 : 1);
+    });
     this.player.body.setCollideWorldBounds(true);
     this.coin = this.add.circle(100, 100, 9, c.colors.coin).setStrokeStyle(2, 0x2b2a33);
     this.physics.add.existing(this.coin);
     this.coin.body.setCircle(9);
     this.placeCoin();
+    this.powerup = this.add.star(0, 0, 5, 6, 13, 0xffffff).setVisible(false);
+    this.physics.add.existing(this.powerup);
+    this.powerup.body.setCircle(12, 1, 1).setEnable(false);
     this.drones = this.physics.add.group();
     // Spread drones across the top; keeps the original 270px gap when it fits.
     const gap = Math.min(270, (c.width - 180) / Math.max(1, preset.droneCount - 1));
@@ -47,9 +65,17 @@ class CoinDash extends Phaser.Scene {
       this.collectEffect(this.coin.x, this.coin.y);
       this.placeCoin();
     });
-    this.physics.add.overlap(this.player, this.drones, () => this.loseLife());
+    this.physics.add.overlap(this.player, this.powerup, () => {
+      if (this.finished || !this.powerup.visible) return;
+      this.hidePowerup();
+      this.startPowerup(this.powerup.kind);
+    });
+    this.physics.add.overlap(this.player, this.drones, () => {
+      if (this.activePowerup === 'shield') return;
+      this.loseLife();
+    });
     this.cursors = this.input.keyboard.createCursorKeys();
-    this.keys = this.input.keyboard.addKeys('W,A,S,D,R');
+    this.keys = this.input.keyboard.addKeys('W,A,S,D,R,P');
     this.input.keyboard.on('keydown-R', () => this.scene.restart());
     for (const [key, name] of Object.entries(DIFFICULTY_KEYS)) {
       this.input.keyboard.on(`keydown-${key}`, () => {
@@ -57,6 +83,13 @@ class CoinDash extends Phaser.Scene {
         this.scene.restart();
       });
     }
+    this.input.keyboard.on('keydown-P', () => this.togglePause());
+    this.pauseBox = this.add.rectangle(c.width / 2, c.height / 2, 460, 150, 0x0a1120, 0.95);
+    this.pauseText = this.add.text(c.width / 2, c.height / 2, 'Paused\nPress P to resume',
+      { font: '24px monospace', color: '#ffffff', align: 'center', lineSpacing: 12 }
+    ).setOrigin(0.5);
+    this.pauseBox.setVisible(false).setDepth(10);
+    this.pauseText.setVisible(false).setDepth(11);
   }
 
   loseLife() {
@@ -103,17 +136,88 @@ class CoinDash extends Phaser.Scene {
       onComplete: () => label.destroy() });
   }
 
-  update() {
+  togglePause() {
     if (this.finished) return;
+    this.paused = !this.paused;
+    if (this.paused) {
+      this.pausedAt = this.time.now;
+      this.physics.pause();
+    } else {
+      const pausedFor = this.time.now - this.pausedAt;
+      this.deadline += pausedFor;
+      this.powerupNextAt += pausedFor;
+      this.powerupExpiresAt += pausedFor;
+      this.powerupUntil += pausedFor;
+      this.physics.resume();
+    }
+    this.pauseBox.setVisible(this.paused);
+    this.pauseText.setVisible(this.paused);
+  }
+
+  showPowerup() {
+    const c = COIN_DASH;
+    let x, y;
+    do {
+      x = Phaser.Math.Between(25, c.width - 25);
+      y = Phaser.Math.Between(70, c.height - 25);
+    } while (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 120);
+    // Only one type exists so far; new types in settings.js join the random pick.
+    this.powerup.kind = Phaser.Utils.Array.GetRandom(Object.keys(c.powerups));
+    this.powerup.setFillStyle(c.colors.powerups[this.powerup.kind]);
+    this.powerup.setPosition(x, y).setVisible(true);
+    this.powerup.body.reset(x, y);
+    this.powerup.body.setEnable(true);
+    this.powerupExpiresAt = this.time.now + c.powerupLifetimeSeconds * 1000;
+  }
+
+  hidePowerup() {
+    this.powerup.setVisible(false);
+    this.powerup.body.setEnable(false);
+    this.powerupNextAt = this.time.now + COIN_DASH.powerupEverySeconds * 1000;
+  }
+
+  // Speed and shield are checked where they apply; slow and time act here.
+  startPowerup(kind) {
+    const p = COIN_DASH.powerups[kind];
+    this.endPowerup();
+    if (kind === 'time') {
+      this.deadline += p.bonus * 1000;
+      return;
+    }
+    if (kind === 'slow') this.scaleDrones(p.multiplier);
+    this.activePowerup = kind;
+    this.powerupUntil = this.time.now + p.seconds * 1000;
+  }
+
+  endPowerup() {
+    if (this.activePowerup === 'slow') this.scaleDrones(1 / COIN_DASH.powerups.slow.multiplier);
+    this.activePowerup = null;
+  }
+
+  scaleDrones(factor) {
+    this.drones.getChildren().forEach(d => d.body.velocity.scale(factor));
+  }
+
+  update() {
+    if (this.finished || this.paused) return;
+    const now = this.time.now;
+    if (!this.powerup.visible && now >= this.powerupNextAt) this.showPowerup();
+    if (this.powerup.visible && now >= this.powerupExpiresAt) this.hidePowerup();
+    if (this.activePowerup && now >= this.powerupUntil) this.endPowerup();
     const dx = Number(this.cursors.right.isDown || this.keys.D.isDown)
       - Number(this.cursors.left.isDown || this.keys.A.isDown);
     const dy = Number(this.cursors.down.isDown || this.keys.S.isDown)
       - Number(this.cursors.up.isDown || this.keys.W.isDown);
-    const direction = new Phaser.Math.Vector2(dx, dy).normalize().scale(COIN_DASH.playerSpeed);
+    const speed = COIN_DASH.playerSpeed
+      * (this.activePowerup === 'speed' ? COIN_DASH.powerups.speed.multiplier : 1);
+    const direction = new Phaser.Math.Vector2(dx, dy).normalize().scale(speed);
     this.player.body.setVelocity(direction.x, direction.y);
-    const seconds = Math.max(0, Math.ceil((this.deadline - this.time.now) / 1000));
+    const seconds = Math.max(0, Math.ceil((this.deadline - now) / 1000));
     const label = COIN_DASH.difficulties[difficulty].label;
-    this.hud.setText(`Coins: ${this.score}          Lives: ${this.lives}          Time: ${seconds}s          ${label}`);
+    const status = this.activePowerup
+      ? `      ${COIN_DASH.powerups[this.activePowerup].label}: ${Math.ceil((this.powerupUntil - now) / 1000)}s`
+      : '';
+    this.hud.setText(`Coins: ${this.score}      Lives: ${this.lives}      Time: ${seconds}s      ${label}${status}`);
     if (seconds === 0) this.finish('Time is up!');
   }
 
