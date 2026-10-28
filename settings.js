@@ -6,5 +6,11 @@ window.COIN_DASH = {
   playerSpeed: 240,
   droneSpeed: 105,
   droneCount: 3,
-  colors: { background: 0x101c31, player: 0x71e8ce, coin: 0xffd166, drone: 0xff657a }
+  powerupEverySeconds: 10,
+  powerupLifetimeSeconds: 6,
+  // Each power-up type: what the HUD calls it and how long its effect lasts.
+  powerups: {
+    speed: { label: 'Speed', seconds: 5, multiplier: 1.6 }
+  },
+  colors: { background: 0x101c31, player: 0x71e8ce, coin: 0xffd166, drone: 0xff657a, powerup: 0x7fb2ff }
 };
