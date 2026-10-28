@@ -14,6 +14,10 @@ class CoinDash extends Phaser.Scene {
     const lines = this.add.graphics().lineStyle(1, 0x5a6b8c, 0.25);
     for (let x = 40; x < c.width; x += 40) lines.lineBetween(x, 0, x + Math.sin(x) * 3, c.height);
     for (let y = 40; y < c.height; y += 40) lines.lineBetween(0, y, c.width, y + Math.cos(y) * 3);
+    // Fixed pool of trail dots, created before the player so they draw behind it.
+    this.trail = Array.from({ length: 7 }, () =>
+      this.add.circle(c.width / 2, c.height / 2, 4, c.colors.player).setAlpha(0));
+    this.trailIndex = 0;
     this.hud = this.add.text(18, 12, '', { fontFamily: HAND_FONT, fontSize: '18px', color: '#2b2a33' });
     // Unfilled 24x24 rectangle keeps the hit box; the ship below is visual only.
     this.player = this.add.rectangle(c.width / 2, c.height / 2, 24, 24);
@@ -93,6 +97,7 @@ class CoinDash extends Phaser.Scene {
   }
 
   update() {
+    this.updateTrail();
     if (this.finished) return;
     const dx = Number(this.cursors.right.isDown || this.keys.D.isDown)
       - Number(this.cursors.left.isDown || this.keys.A.isDown);
@@ -103,6 +108,15 @@ class CoinDash extends Phaser.Scene {
     const seconds = Math.max(0, Math.ceil((this.deadline - this.time.now) / 1000));
     this.hud.setText(`Coins: ${this.score}                       Time: ${seconds}s`);
     if (seconds === 0) this.finish('Time is up!');
+  }
+
+  updateTrail() {
+    this.trail.forEach(dot => dot.setAlpha(Math.max(0, dot.alpha - 0.03)));
+    const last = this.trail[(this.trailIndex + this.trail.length - 1) % this.trail.length];
+    // Spawn by distance moved, so standing still or pushing into a wall leaves no trail.
+    if (Phaser.Math.Distance.Between(last.x, last.y, this.player.x, this.player.y) < 10) return;
+    this.trail[this.trailIndex].setPosition(this.player.x, this.player.y).setAlpha(0.5);
+    this.trailIndex = (this.trailIndex + 1) % this.trail.length;
   }
 
   finish(reason) {
