@@ -4,6 +4,10 @@ const HAND_FONT = '"Chalkboard SE", "Comic Sans MS", "Marker Felt", cursive';
 // Chosen preset survives restarts; switching keys restart the round.
 let difficulty = COIN_DASH.difficulty;
 const DIFFICULTY_KEYS = { ONE: 'easy', TWO: 'normal', THREE: 'hard' };
+// Fireworks use the style's ink colours (never the white 'time' colour) and a hard particle cap.
+const FW_COLORS = [COIN_DASH.colors.drone, COIN_DASH.colors.coin, COIN_DASH.colors.player, 0x5a6b8c,
+  COIN_DASH.colors.powerups.speed, COIN_DASH.colors.powerups.shield, COIN_DASH.colors.powerups.slow];
+const FW_MAX = 300;
 
 class CoinDash extends Phaser.Scene {
   constructor() { super('CoinDash'); }
@@ -27,6 +31,11 @@ class CoinDash extends Phaser.Scene {
     const lines = this.add.graphics().lineStyle(1, 0x5a6b8c, 0.25);
     for (let x = 40; x < c.width; x += 40) lines.lineBetween(x, 0, x + Math.sin(x) * 3, c.height);
     for (let y = 40; y < c.height; y += 40) lines.lineBetween(0, y, c.width, y + Math.cos(y) * 3);
+    // One Graphics redrawn each frame, created early so fireworks sit behind everything in play.
+    this.fireworks = this.add.graphics();
+    this.fwParts = [];
+    this.fwQueue = [];
+    this.fwClock = 0;
     // Fixed pool of trail dots, created before the player so they draw behind it.
     this.trail = Array.from({ length: 7 }, () =>
       this.add.circle(c.width / 2, c.height / 2, 4, c.colors.player).setAlpha(0));
@@ -163,6 +172,85 @@ class CoinDash extends Phaser.Scene {
       { font: '16px monospace', color: `#${color.toString(16).padStart(6, '0')}` }).setOrigin(0.5);
     this.tweens.add({ targets: label, y: y - 30, alpha: 0, duration: 500,
       onComplete: () => label.destroy() });
+    if (this.score % 10 === 0) this.queueRockets(Phaser.Math.Between(2, 3), 150);
+  }
+
+  // Rockets are queued on the fireworks clock, which stops while paused.
+  queueRockets(count, spacing) {
+    for (let i = 0; i < count; i++) {
+      this.fwQueue.push({ at: this.fwClock + i * spacing, x: Phaser.Math.Between(80, COIN_DASH.width - 80) });
+    }
+  }
+
+  launchRocket(x) {
+    if (this.fwParts.length >= FW_MAX) return;
+    const h = COIN_DASH.height;
+    this.fwParts.push({ kind: 'rocket', x, y: h, x0: x, y0: h, vx: Phaser.Math.Between(-40, 40),
+      vy: -Phaser.Math.Between(430, 600), color: Phaser.Utils.Array.GetRandom(FW_COLORS) });
+  }
+
+  burstFirework(p) {
+    const parts = [{ kind: 'trail', x0: p.x0, y0: p.y0, x: p.x, y: p.y, color: p.color, life: 0.4, max: 0.4 }];
+    const strokes = Phaser.Math.Between(14, 20);
+    for (let i = 0; i < strokes + 6; i++) {
+      const star = i >= strokes;
+      const angle = star ? Math.random() * Math.PI * 2 : (i + Math.random() * 0.4) / strokes * Math.PI * 2;
+      const speed = Phaser.Math.Between(110, 200) * (star ? 0.6 : 1);
+      const life = 0.9 + Math.random() * 0.5;
+      parts.push({ kind: star ? 'star' : 'stroke', x: p.x, y: p.y,
+        vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+        color: star ? Phaser.Utils.Array.GetRandom(FW_COLORS) : p.color, life, max: life });
+    }
+    return parts;
+  }
+
+  updateFireworks(delta) {
+    if (this.paused) return;
+    const dt = Math.min(delta, 50) / 1000;
+    this.fwClock += dt * 1000;
+    this.fwQueue.filter(q => q.at <= this.fwClock).forEach(q => this.launchRocket(q.x));
+    this.fwQueue = this.fwQueue.filter(q => q.at > this.fwClock);
+    const born = [];
+    this.fwParts = this.fwParts.filter(p => {
+      if (p.kind === 'trail') return (p.life -= dt) > 0;
+      if (p.kind !== 'rocket') {
+        // Sparks slow down and drift down a little as they fade.
+        p.vx *= 1 - 1.5 * dt;
+        p.vy = p.vy * (1 - 1.5 * dt) + 70 * dt;
+        p.life -= dt;
+      } else {
+        p.vy += 400 * dt;
+      }
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      if (p.kind === 'rocket' && p.vy > -60) {
+        born.push(...this.burstFirework(p));
+        return false;
+      }
+      return p.kind === 'rocket' || p.life > 0;
+    });
+    this.fwParts.push(...born.slice(0, FW_MAX - this.fwParts.length));
+    const g = this.fireworks.clear();
+    for (const p of this.fwParts) {
+      const alpha = 0.85 * (p.max ? p.life / p.max : 1);
+      g.lineStyle(2, p.color, alpha).fillStyle(p.color, alpha);
+      if (p.kind === 'rocket' || p.kind === 'trail') {
+        // Dashed pencil line from the launch point to the rocket.
+        const len = Phaser.Math.Distance.Between(p.x0, p.y0, p.x, p.y);
+        for (let d = 0; d < len; d += 11) {
+          const a = d / len, b = Math.min(len, d + 6) / len;
+          g.lineBetween(p.x0 + (p.x - p.x0) * a, p.y0 + (p.y - p.y0) * a,
+            p.x0 + (p.x - p.x0) * b, p.y0 + (p.y - p.y0) * b);
+        }
+      }
+      if (p.kind === 'rocket') g.fillCircle(p.x, p.y, 2.5);
+      if (p.kind === 'stroke') g.lineBetween(p.x - p.vx * 0.08, p.y - p.vy * 0.08, p.x, p.y);
+      if (p.kind === 'star') {
+        g.fillPoints(Array.from({ length: 8 }, (_, k) => ({
+          x: p.x + Math.cos(k * Math.PI / 4) * (k % 2 ? 1.5 : 4.5),
+          y: p.y + Math.sin(k * Math.PI / 4) * (k % 2 ? 1.5 : 4.5) })), true);
+      }
+    }
   }
 
   togglePause() {
@@ -258,6 +346,7 @@ class CoinDash extends Phaser.Scene {
 
   update(time, delta) {
     this.updateTrail();
+    this.updateFireworks(delta);
     if (this.finished || this.paused) return;
     const now = this.time.now;
     if (!this.powerup.visible && now >= this.powerupNextAt) this.showPowerup();
@@ -295,6 +384,8 @@ class CoinDash extends Phaser.Scene {
     if (this.finished) return;
     this.finished = true;
     this.physics.pause();
+    // End-of-round show; drawn behind the box below because the Graphics was created first.
+    this.queueRockets(12, 150);
     const c = COIN_DASH;
     this.add.rectangle(c.width / 2, c.height / 2, 460, 150, c.colors.background, 0.95)
       .setStrokeStyle(2, 0x2b2a33).setAngle(-1);
