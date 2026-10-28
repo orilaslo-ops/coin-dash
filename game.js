@@ -19,9 +19,18 @@ class CoinDash extends Phaser.Scene {
       .setStrokeStyle(2, 0x2b2a33);
     this.physics.add.existing(this.player);
     this.player.body.setCollideWorldBounds(true);
-    this.coin = this.add.circle(100, 100, 9, c.colors.coin).setStrokeStyle(2, 0x2b2a33);
+    this.coin = this.add.circle(100, 100, 9, c.colors.coin).setStrokeStyle(2, 0x2b2a33).setVisible(false);
     this.physics.add.existing(this.coin);
     this.coin.body.setCircle(9);
+    // Bodies follow scale, so the spin is drawn on a body-less copy of the coin.
+    this.coinLook = this.add.circle(100, 100, 9, c.colors.coin).setStrokeStyle(2, 0x2b2a33);
+    this.glint = this.add.star(0, 0, 4, 1, 5, 0x2b2a33).setAlpha(0);
+    this.tweens.add({ targets: this.coinLook, scaleX: 0.15, duration: 450, yoyo: true, repeat: -1,
+      ease: 'Sine.easeInOut', onRepeat: () => {
+        if (Math.random() > 0.35) return;
+        this.glint.setPosition(this.coin.x + 3, this.coin.y - 4).setScale(0.4);
+        this.tweens.add({ targets: this.glint, alpha: 1, scale: 1, duration: 140, yoyo: true });
+      } });
     this.placeCoin();
     this.drones = this.physics.add.group();
     for (let i = 0; i < c.droneCount; i++) {
@@ -54,6 +63,7 @@ class CoinDash extends Phaser.Scene {
     } while (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 60);
     this.coin.setPosition(x, y);
     this.coin.body.reset(x, y);
+    this.coinLook.setPosition(x, y);
   }
 
   collectEffect(x, y) {
