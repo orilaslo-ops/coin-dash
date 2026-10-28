@@ -4,6 +4,14 @@ const HAND_FONT = '"Chalkboard SE", "Comic Sans MS", "Marker Felt", cursive';
 // Chosen preset survives restarts; switching keys restart the round.
 let difficulty = COIN_DASH.difficulty;
 const DIFFICULTY_KEYS = { ONE: 'easy', TWO: 'normal', THREE: 'hard' };
+// Classic heart curve, about 16px wide, for the HUD lives.
+const HEART = Array.from({ length: 30 }, (_, i) => {
+  const t = i / 30 * Math.PI * 2;
+  return { x: 8 * Math.sin(t) ** 3,
+    y: -0.5 * (13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)) };
+});
+const SCRIBBLE = [[-8, -4], [6, -6], [-8, 0], [8, -2], [-6, 5], [6, 4], [-2, 9]];
+const STAMP_COLORS = { easy: 0x3f8a4a, normal: 0x2b2a33, hard: 0xc0392b };
 
 class CoinDash extends Phaser.Scene {
   constructor() { super('CoinDash'); }
@@ -31,7 +39,34 @@ class CoinDash extends Phaser.Scene {
     this.trail = Array.from({ length: 7 }, () =>
       this.add.circle(c.width / 2, c.height / 2, 4, c.colors.player).setAlpha(0));
     this.trailIndex = 0;
-    this.hud = this.add.text(18, 12, '', { fontFamily: HAND_FONT, fontSize: '18px', color: '#2b2a33' });
+    // Sticky-note HUD strip; stays inside the top 44px, above the physics bounds.
+    const ink = 0x2b2a33;
+    const edge = [{ x: 6, y: 5 }, { x: 300, y: 3 }, { x: 560, y: 6 }, { x: 795, y: 4 },
+      { x: 793, y: 39 }, { x: 420, y: 37 }, { x: 7, y: 40 }];
+    const note = this.add.graphics().fillStyle(0xfdeea0).fillPoints(edge, true)
+      .lineStyle(1.5, ink).strokePoints(edge, true).lineStyle(1, ink, 0.35);
+    for (let i = 0; i < 6; i++) note.lineBetween(758 + i * 5, 38, 768 + i * 5, 26);
+    note.fillStyle(c.colors.coin).fillCircle(28, 21, 8).lineStyle(1.5, ink)
+      .strokeCircle(28, 21, 8).lineBetween(28, 17, 28, 25);
+    this.add.rectangle(44, 4, 46, 12, 0xffffff, 0.45).setStrokeStyle(1, ink, 0.2).setAngle(-6);
+    this.add.rectangle(756, 4, 46, 12, 0xffffff, 0.45).setStrokeStyle(1, ink, 0.2).setAngle(5);
+    const font = { fontFamily: HAND_FONT, fontSize: '18px', color: '#2b2a33' };
+    this.coinsText = this.add.text(42, 22, '', font).setOrigin(0, 0.5);
+    this.hearts = this.add.graphics();
+    this.drawHearts();
+    const timeX = 172 + c.startLives * 24;
+    this.timeText = this.add.text(timeX, 22, '', font).setOrigin(0, 0.5);
+    // Difficulty only changes on restart, so the stamp is drawn once.
+    const stampColor = STAMP_COLORS[difficulty];
+    const stamp = this.add.text(timeX + 150, 22, preset.label.toUpperCase(), { fontFamily: HAND_FONT,
+      fontSize: '15px', fontStyle: 'bold', color: `#${stampColor.toString(16).padStart(6, '0')}` })
+      .setOrigin(0.5).setAngle(-6).setAlpha(0.85);
+    this.add.rectangle(stamp.x, stamp.y, stamp.width + 14, 24).setStrokeStyle(2, stampColor, 0.85)
+      .setAngle(-6);
+    this.powerupText = this.add.text(0, 0, '', font).setOrigin(0, 0.5);
+    this.powerupBar = this.add.rectangle(110, 0, 140, 10, 0xffffff).setOrigin(0, 0.5);
+    this.powerupHud = this.add.container(timeX + 220, 22, [this.powerupText, this.powerupBar,
+      this.add.rectangle(110, 0, 140, 10).setOrigin(0, 0.5).setStrokeStyle(1.5, ink)]).setVisible(false);
     // Unfilled 24x24 rectangle keeps the hit box; the ship below is visual only.
     this.player = this.add.rectangle(c.width / 2, c.height / 2, 24, 24);
     this.physics.add.existing(this.player);
@@ -124,7 +159,7 @@ class CoinDash extends Phaser.Scene {
     if (this.finished || this.time.now < this.invulnerableUntil) return;
     this.lives--;
     if (this.lives <= 0) {
-      this.hud.setText(this.hud.text.replace(/Lives: \d+/, 'Lives: 0'));
+      this.drawHearts();
       this.finish('A drone caught you!');
       return;
     }
@@ -136,6 +171,19 @@ class CoinDash extends Phaser.Scene {
       callback: () => this.player.setVisible(!this.player.visible)
     });
     this.time.delayedCall(COIN_DASH.hitInvulnerableMs, () => this.player.setVisible(true));
+  }
+
+  // Redrawn only when lives change; lost lives become scribbled-out outlines.
+  drawHearts() {
+    this.livesShown = this.lives;
+    this.hearts.clear().lineStyle(1.5, 0x2b2a33);
+    for (let i = 0; i < COIN_DASH.startLives; i++) {
+      const x = 160 + i * 24, y = 21;
+      const points = HEART.map(p => ({ x: p.x + x, y: p.y + y }));
+      if (i < this.lives) this.hearts.fillStyle(0xd0524a).fillPoints(points, true);
+      else this.hearts.strokePoints(SCRIBBLE.map(([sx, sy]) => ({ x: sx + x, y: sy + y })));
+      this.hearts.strokePoints(points, true);
+    }
   }
 
   placeCoin() {
@@ -274,11 +322,16 @@ class CoinDash extends Phaser.Scene {
     const direction = new Phaser.Math.Vector2(dx, dy).normalize().scale(speed);
     this.player.body.setVelocity(direction.x, direction.y);
     const seconds = Math.max(0, Math.ceil((this.deadline - now) / 1000));
-    const label = COIN_DASH.difficulties[difficulty].label;
-    const status = this.activePowerup
-      ? `      ${COIN_DASH.powerups[this.activePowerup].label}: ${Math.ceil((this.powerupUntil - now) / 1000)}s`
-      : '';
-    this.hud.setText(`Coins: ${this.score}      Lives: ${this.lives}      Time: ${seconds}s      ${label}${status}`);
+    this.coinsText.setText(`Coins: ${this.score}`);
+    this.timeText.setText(`Time: ${seconds}s`);
+    if (this.lives !== this.livesShown) this.drawHearts();
+    const kind = this.activePowerup;
+    this.powerupHud.setVisible(Boolean(kind));
+    if (kind) {
+      this.powerupText.setText(COIN_DASH.powerups[kind].label);
+      this.powerupBar.setFillStyle(COIN_DASH.colors.powerups[kind]).setScale(
+        Math.max(0, (this.powerupUntil - now) / (COIN_DASH.powerups[kind].seconds * 1000)), 1);
+    }
     if (seconds === 0) this.finish('Time is up!');
   }
 
