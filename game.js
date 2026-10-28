@@ -19,6 +19,15 @@ class CoinDash extends Phaser.Scene {
     this.hud = this.add.text(18, 12, '', { font: '18px monospace', color: '#ffffff' });
     this.player = this.add.rectangle(c.width / 2, c.height / 2, 24, 24, c.colors.player);
     this.physics.add.existing(this.player);
+    // A separate ring shows the shield, so the player's own look is untouched.
+    this.shieldRing = this.add.circle(0, 0, 22).setStrokeStyle(3, c.colors.powerups.shield)
+      .setVisible(false);
+    this.events.on('postupdate', () => {
+      const left = this.powerupUntil - this.time.now;
+      this.shieldRing.setPosition(this.player.x, this.player.y)
+        .setVisible(this.activePowerup === 'shield')
+        .setAlpha(!this.paused && left < 1000 && Math.floor(left / 125) % 2 ? 0.25 : 1);
+    });
     this.player.body.setCollideWorldBounds(true);
     this.coin = this.add.circle(100, 100, 9, c.colors.coin);
     this.physics.add.existing(this.coin);

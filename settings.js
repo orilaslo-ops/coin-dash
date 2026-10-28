@@ -11,9 +11,9 @@ window.COIN_DASH = {
   // Each power-up type: what the HUD calls it and how long its effect lasts.
   // 'time' is instant: it adds `bonus` seconds to the clock.
   powerups: {
-    speed: { label: 'Speed', seconds: 5, multiplier: 1.6 },
-    shield: { label: 'Shield', seconds: 5 },
-    slow: { label: 'Slow drones', seconds: 5, multiplier: 0.5 },
+    speed: { label: 'Speed', seconds: 3, multiplier: 1.6 },
+    shield: { label: 'Shield', seconds: 3 },
+    slow: { label: 'Slow drones', seconds: 3, multiplier: 0.5 },
     time: { bonus: 5 }
   },
   colors: {
