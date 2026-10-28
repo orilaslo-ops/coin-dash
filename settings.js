@@ -30,10 +30,12 @@ window.COIN_DASH = {
     speed: { label: 'Speed', seconds: 3, multiplier: 1.6 },
     shield: { label: 'Shield', seconds: 3 },
     slow: { label: 'Slow drones', seconds: 3, multiplier: 0.5 },
-    time: { bonus: 5 }
+    time: { bonus: 5 },
+    // Coins within `radius` px glide toward the player at `pullSpeed` px/s.
+    magnet: { label: 'Magnet', seconds: 5, radius: 160, pullSpeed: 320 }
   },
   colors: {
     background: 0xf4efe1, player: 0x5f9c8f, coin: 0xd8b04a, drone: 0xc4574d,
-    powerups: { speed: 0x2f6fd6, shield: 0x8657c9, slow: 0x3e9a4b, time: 0xe08a2e }
+    powerups: { speed: 0x2f6fd6, shield: 0x8657c9, slow: 0x3e9a4b, time: 0xe08a2e, magnet: 0xff8fb1 }
   }
 };
