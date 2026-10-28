@@ -44,3 +44,7 @@ laptops' JSON files together and save the combined HTML. Use the same time windo
 The game draws its own shapes; there are no image or audio assets. The authored files are under the
 MIT licence in LICENSE.txt. Phaser documentation:
 https://docs.phaser.io/phaser/getting-started/making-your-first-phaser-game
+
+## Team
+
+- orilaslo-ops
