@@ -32,6 +32,8 @@ class CoinDash extends Phaser.Scene {
       this.placeCoin();
     });
     this.physics.add.overlap(this.player, this.drones, () => this.finish('A drone caught you!'));
+    this.chaser = null;
+    this.time.delayedCall(c.chaserDelaySeconds * 1000, () => this.spawnChaser());
     this.cursors = this.input.keyboard.createCursorKeys();
     this.keys = this.input.keyboard.addKeys('W,A,S,D,R');
     this.input.keyboard.on('keydown-R', () => this.scene.restart());
@@ -49,8 +51,33 @@ class CoinDash extends Phaser.Scene {
     this.coin.body.reset(x, y);
   }
 
-  update() {
+  spawnChaser() {
     if (this.finished) return;
+    const c = COIN_DASH;
+    // Start in the corner farthest from the player so it never spawns on top of them.
+    const corners = [[30, 74], [c.width - 30, 74], [30, c.height - 30], [c.width - 30, c.height - 30]];
+    const [x, y] = corners.reduce((best, p) =>
+      Phaser.Math.Distance.Between(p[0], p[1], this.player.x, this.player.y)
+        > Phaser.Math.Distance.Between(best[0], best[1], this.player.x, this.player.y) ? p : best);
+    this.chaser = this.add.rectangle(x, y, 22, 22, c.colors.drone).setAngle(45);
+    this.physics.add.existing(this.chaser);
+    this.chaser.body.setCollideWorldBounds(true);
+    this.physics.add.overlap(this.player, this.chaser, () => this.finish('The chaser got you!'));
+  }
+
+  steerChaser(delta) {
+    const c = COIN_DASH;
+    const toPlayer = new Phaser.Math.Vector2(this.player.x - this.chaser.x, this.player.y - this.chaser.y)
+      .normalize().scale(c.chaserSpeed);
+    // Blend toward the wanted direction so the chaser lags on sharp turns and can be dodged.
+    const t = Math.min(1, c.chaserTurnRate * delta / 1000);
+    const v = this.chaser.body.velocity;
+    this.chaser.body.setVelocity(v.x + (toPlayer.x - v.x) * t, v.y + (toPlayer.y - v.y) * t);
+  }
+
+  update(time, delta) {
+    if (this.finished) return;
+    if (this.chaser) this.steerChaser(delta);
     const dx = Number(this.cursors.right.isDown || this.keys.D.isDown)
       - Number(this.cursors.left.isDown || this.keys.A.isDown);
     const dy = Number(this.cursors.down.isDown || this.keys.S.isDown)
