@@ -528,10 +528,9 @@ class CoinDash extends Phaser.Scene {
       .fillRect(0, top, insetX, h)
       .fillRect(insetX + w, top, insetX, h)
       .lineStyle(2, 0x2b2a33, 0.8).strokeRect(insetX, top, w, h);
-    // Portals keep their place relative to the arena, so they move in with the edges and stay usable.
-    this.portals.forEach((portal, i) => {
-      const [px, py] = c.portals[i];
-      portal.setPosition(insetX + px * w / c.width, top + (py - 44) * h / fullHeight);
+    // Portals stay put; once the edge closes past one it disappears, and a lone portal is useless.
+    this.portals.forEach(portal => {
+      if (portal.x < insetX || portal.x > insetX + w || portal.y < top || portal.y > top + h) portal.setVisible(false);
     });
     // Pickups left outside the new edge move back in (the coin) or vanish early (a power-up).
     const b = this.physics.world.bounds;
@@ -553,11 +552,12 @@ class CoinDash extends Phaser.Scene {
 
   // Coins and power-ups keep clear of the portals so they can be picked up without teleporting.
   onPortal(x, y) {
-    return this.portals.some(p => Phaser.Math.Distance.Between(x, y, p.x, p.y) < COIN_DASH.portalRadius + 30);
+    return this.portals.some(p => p.visible && Phaser.Math.Distance.Between(x, y, p.x, p.y) < COIN_DASH.portalRadius + 30);
   }
 
   // The player's centre entering a portal moves them to the other one.
   usePortals() {
+    if (!this.portals.every(p => p.visible)) return;
     const near = p => Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y) < COIN_DASH.portalRadius;
     if (this.portalExit) {
       if (!near(this.portalExit)) this.portalExit = null;
