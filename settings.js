@@ -43,6 +43,14 @@ window.COIN_DASH = {
     // Coins within `radius` px glide toward the player at `pullSpeed` px/s.
     magnet: { label: 'Magnet', seconds: 5, radius: 160, pullSpeed: 320 }
   },
+  // One mission is picked at random each round; finishing it adds `missionBonus` coins to the score.
+  // {n} in a label is replaced by the target.
+  missionBonus: 5,
+  missions: {
+    noHit: { label: 'Collect {n} coins in a row without getting hit', target: 10 },
+    powerups: { label: 'Pick up {n} power-ups', target: 2 },
+    boosted: { label: 'Collect {n} coins while a power-up is active', target: 2 }
+  },
   colors: {
     background: 0xf4efe1, player: 0x5f9c8f, coin: 0xd8b04a, drone: 0xc4574d,
     powerups: { speed: 0x2f6fd6, shield: 0x8657c9, slow: 0x3e9a4b, time: 0xe08a2e, magnet: 0xff8fb1 }

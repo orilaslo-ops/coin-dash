@@ -164,6 +164,12 @@ class CoinDash extends Phaser.Scene {
     this.powerupBar = this.add.rectangle(110, 0, 140, 10, 0xffffff).setOrigin(0, 0.5);
     this.powerupHud = this.add.container(timeX + 220, 22, [this.powerupText, this.powerupBar,
       this.add.rectangle(110, 0, 140, 10).setOrigin(0, 0.5).setStrokeStyle(1.5, ink)]).setVisible(false);
+    // This round's mission sits at the bottom of the field; styling is left to the visuals owner.
+    const missionKind = Phaser.Utils.Array.GetRandom(Object.keys(c.missions));
+    this.mission = { kind: missionKind, ...c.missions[missionKind], progress: 0, done: false };
+    this.missionText = this.add.text(18, c.height - 28, '',
+      { fontFamily: HAND_FONT, fontSize: '16px', color: '#2b2a33' }).setAlpha(0.8).setDepth(5);
+    this.drawMission();
     // Unfilled 24x24 rectangle keeps the hit box; the ship below is visual only.
     this.player = this.add.rectangle(c.width / 2, c.height / 2, 24, 24);
     this.physics.add.existing(this.player);
@@ -259,12 +265,14 @@ class CoinDash extends Phaser.Scene {
       this.score++;
       this.collectEffect(this.coin.x, this.coin.y);
       this.placeCoin();
+      this.advanceMission('coin');
     });
     this.physics.add.overlap(this.player, this.powerup, () => {
       if (this.finished || !this.powerup.visible) return;
       this.pickupEffect(this.powerup.x, this.powerup.y, this.powerup.kind);
       this.hidePowerup();
       this.startPowerup(this.powerup.kind);
+      this.advanceMission('powerup');
     });
     this.physics.add.overlap(this.player, this.drones, () => {
       if (this.activePowerup === 'shield') return;
@@ -374,7 +382,7 @@ class CoinDash extends Phaser.Scene {
       ['time', `Extra time: +${p.time.bonus}s on the clock`],
       ['magnet', `${p.magnet.label}: nearby coins fly to you for ${p.magnet.seconds}s`]
     ];
-    const box = this.add.rectangle(c.width / 2, c.height / 2 + 6, 600, 420, c.colors.background, 0.97)
+    const box = this.add.rectangle(c.width / 2, c.height / 2 + 8, 600, 440, c.colors.background, 0.97)
       .setStrokeStyle(2, 0x2b2a33);
     const body = this.add.text(left, 92, [
       'Move with the arrow keys or WASD.',
@@ -384,6 +392,7 @@ class CoinDash extends Phaser.Scene {
       'A red bar patrols the faint loop, and a red circle teleports.',
       `A hit costs one of your ${c.startLives} lives, then you blink and are safe`,
       `for ${c.hitInvulnerableMs / 1000}s. Lose them all and the round ends.`,
+      `Each round has a mission (bottom left); finish it for +${c.missionBonus} coins.`,
       `Power-up stars appear every ${c.powerupEverySeconds}s and vanish after ${c.powerupLifetimeSeconds}s:`
     ].join('\n'), style);
     const parts = [
@@ -423,6 +432,7 @@ class CoinDash extends Phaser.Scene {
   loseLife() {
     if (this.finished || this.time.now < this.invulnerableUntil) return;
     this.lives--;
+    this.advanceMission('hit');
     if (this.lives <= 0) {
       this.drawHearts();
       this.finish('A drone caught you!');
@@ -449,6 +459,33 @@ class CoinDash extends Phaser.Scene {
       else this.hearts.strokePoints(SCRIBBLE.map(([sx, sy]) => ({ x: sx + x, y: sy + y })));
       this.hearts.strokePoints(points, true);
     }
+  }
+
+  // Counts game events toward this round's mission and pays the bonus once when it is reached.
+  advanceMission(event) {
+    const m = this.mission;
+    if (m.done || this.finished) return;
+    if (event === 'hit' && m.kind === 'noHit') m.progress = 0;
+    if (event === 'coin' && (m.kind === 'noHit'
+      || (m.kind === 'boosted' && this.activePowerup))) m.progress++;
+    if (event === 'powerup' && m.kind === 'powerups') m.progress++;
+    if (m.progress >= m.target) {
+      m.done = true;
+      this.score += COIN_DASH.missionBonus;
+      const label = this.add.text(this.missionText.x, this.missionText.y - 4,
+        `Mission complete! +${COIN_DASH.missionBonus}`, { fontFamily: HAND_FONT, fontSize: '18px', color: INK });
+      this.tweens.add({ targets: label, y: label.y - 40, alpha: 0, duration: 1200,
+        onComplete: () => label.destroy() });
+    }
+    this.drawMission();
+  }
+
+  drawMission() {
+    const m = this.mission;
+    const label = m.label.replace('{n}', m.target);
+    this.missionText.setText(m.done
+      ? `Mission done: ${label} (+${COIN_DASH.missionBonus})`
+      : `Mission: ${label}  ${m.progress}/${m.target}  (+${COIN_DASH.missionBonus})`);
   }
 
   placeCoin() {
@@ -937,6 +974,9 @@ class CoinDash extends Phaser.Scene {
       .setOrigin(0.5).setDepth(11);
     this.add.text(cx, cy + 5, newBest ? 'New best!' : `Best on ${c.difficulties[difficulty].label}: ${best}`,
       { ...style, fontSize: '20px', fontStyle: newBest ? 'bold' : 'normal' }).setOrigin(0.5).setDepth(11);
+    this.add.text(cx, cy + 35, this.mission.done
+      ? `Mission complete: +${c.missionBonus} coins` : 'Mission not completed',
+    { ...style, fontSize: '18px' }).setOrigin(0.5).setDepth(11);
     this.gameOverButton(cx - 90, cy + 75, 'Again (R)', () => this.scene.restart());
     this.gameOverButton(cx + 90, cy + 75, 'Menu (M)', () => this.goToMenu());
     // M is also the sound toggle inside settings, so it only means Menu while settings are closed.
