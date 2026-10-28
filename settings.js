@@ -11,5 +11,7 @@ window.COIN_DASH = {
     normal: { label: 'Normal', droneCount: 3, droneSpeed: 105 },
     hard:   { label: 'Hard',   droneCount: 5, droneSpeed: 140 }
   },
+  startLives: 3,
+  hitInvulnerableMs: 1500,
   colors: { background: 0xf4efe1, player: 0x5f9c8f, coin: 0xd8b04a, drone: 0xc4574d }
 };
