@@ -112,11 +112,18 @@ class CoinDash extends Phaser.Scene {
     // A separate ring shows the shield, so the player's own look is untouched.
     this.shieldRing = this.add.circle(0, 0, 22).setStrokeStyle(3, c.colors.powerups.shield)
       .setVisible(false);
+    // A faint circle marks the magnet's reach while it is active.
+    this.magnetRing = this.add.circle(0, 0, c.powerups.magnet.radius)
+      .setStrokeStyle(2, c.colors.powerups.magnet, 0.5).setVisible(false);
     this.events.on('postupdate', () => {
       const left = this.powerupUntil - this.time.now;
+      const blink = !this.paused && !this.countingDown && left < 1000 && Math.floor(left / 125) % 2;
       this.shieldRing.setPosition(this.player.x, this.player.y)
         .setVisible(this.activePowerup === 'shield')
-        .setAlpha(!this.paused && !this.countingDown && left < 1000 && Math.floor(left / 125) % 2 ? 0.25 : 1);
+        .setAlpha(blink ? 0.25 : 1);
+      this.magnetRing.setPosition(this.player.x, this.player.y)
+        .setVisible(this.activePowerup === 'magnet')
+        .setAlpha(blink ? 0.25 : 1);
     });
     this.player.body.setCollideWorldBounds(true);
     this.coin = this.add.circle(100, 100, 9, c.colors.coin).setStrokeStyle(2, 0x2b2a33);
@@ -247,7 +254,8 @@ class CoinDash extends Phaser.Scene {
       ['speed', `${p.speed.label}: move ${p.speed.multiplier}x faster for ${p.speed.seconds}s`],
       ['shield', `${p.shield.label}: drones cannot hurt you for ${p.shield.seconds}s`],
       ['slow', `${p.slow.label}: drones move at ${p.slow.multiplier * 100}% speed for ${p.slow.seconds}s`],
-      ['time', `Extra time: +${p.time.bonus}s on the clock`]
+      ['time', `Extra time: +${p.time.bonus}s on the clock`],
+      ['magnet', `${p.magnet.label}: nearby coins fly to you for ${p.magnet.seconds}s`]
     ];
     const box = this.add.rectangle(c.width / 2, c.height / 2 + 2, 600, 400, c.colors.background, 0.97)
       .setStrokeStyle(2, 0x2b2a33);
@@ -406,7 +414,20 @@ class CoinDash extends Phaser.Scene {
     this.powerupNextAt = this.time.now + COIN_DASH.powerupEverySeconds * 1000;
   }
 
-  // Speed and shield are checked where they apply; slow and time act here.
+  // While the magnet is on, a coin within reach moves toward the player; otherwise it stays still.
+  pullCoin() {
+    const m = COIN_DASH.powerups.magnet;
+    const dx = this.player.x - this.coin.x;
+    const dy = this.player.y - this.coin.y;
+    const dist = Math.hypot(dx, dy);
+    if (this.activePowerup === 'magnet' && dist > 0 && dist < m.radius) {
+      this.coin.body.setVelocity(dx / dist * m.pullSpeed, dy / dist * m.pullSpeed);
+    } else {
+      this.coin.body.setVelocity(0, 0);
+    }
+  }
+
+  // Speed, shield and magnet are checked where they apply; slow and time act here.
   startPowerup(kind) {
     const p = COIN_DASH.powerups[kind];
     this.endPowerup();
@@ -464,6 +485,7 @@ class CoinDash extends Phaser.Scene {
     if (this.activePowerup && now >= this.powerupUntil) this.endPowerup();
     if (!this.chaser && now >= this.chaserAt) this.spawnChaser();
     if (this.chaser) this.steerChaser(delta);
+    this.pullCoin();
     const arrows = playerSettings.keyScheme !== 'wasd';
     const wasd = playerSettings.keyScheme !== 'arrows';
     const held = (arrow, letter) => (arrows && arrow.isDown) || (wasd && letter.isDown);
