@@ -31,6 +31,9 @@ window.COIN_DASH = {
   chaserSpeed: 130,
   chaserDelaySeconds: 5,
   chaserTurnRate: 2.5, // how quickly the chaser steers toward the player (per second)
+  // The arena's edges close in evenly over the round; by roundSeconds it is this fraction of its
+  // full width and height, and it stays that size for any bonus time.
+  arenaMinScale: 0.55,
   powerupEverySeconds: 10,
   powerupLifetimeSeconds: 6,
   // Each power-up type: what the HUD calls it and how long its effect lasts.

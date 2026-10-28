@@ -123,10 +123,15 @@ class CoinDash extends Phaser.Scene {
     this.activePowerup = null;
     this.powerupUntil = 0;
     this.physics.world.setBounds(0, 44, c.width, c.height - 44);
+    // Play time drives the shrinking arena; it only grows in update(), so pauses and countdowns stop it.
+    this.playedMs = 0;
+    this.arenaInset = -1;
     // Slightly uneven pencil grid, drawn once so the paper look stays static.
     const lines = this.add.graphics().lineStyle(1, 0x5a6b8c, 0.25);
     for (let x = 40; x < c.width; x += 40) lines.lineBetween(x, 0, x + Math.sin(x) * 3, c.height);
     for (let y = 40; y < c.height; y += 40) lines.lineBetween(0, y, c.width, y + Math.cos(y) * 3);
+    // Shade outside the arena and its edge line; plain ink so the visuals owner can restyle it.
+    this.arenaEdge = this.add.graphics();
     // One Graphics redrawn each frame, created early so fireworks sit behind everything in play.
     this.fireworks = this.add.graphics();
     this.fwParts = [];
@@ -216,6 +221,7 @@ class CoinDash extends Phaser.Scene {
         this.tweens.add({ targets: this.glint, alpha: 1, scale: 1, duration: 140, yoyo: true });
       } });
     this.placeCoin();
+    this.updateArena();
     // The star keeps the hit area but is never seen; the sticker below bobs and blinks instead.
     this.powerup = this.add.star(0, 0, 5, 6, 13, 0xffffff).setVisible(false).setAlpha(0);
     this.powerupLook = this.add.graphics().setVisible(false);
@@ -393,6 +399,7 @@ class CoinDash extends Phaser.Scene {
       `A hit costs one of your ${c.startLives} lives, then you blink and are safe`,
       `for ${c.hitInvulnerableMs / 1000}s. Lose them all and the round ends.`,
       `Each round has a mission (bottom left); finish it for +${c.missionBonus} coins.`,
+      'The edges of the field close in as time passes.',
       `Power-up stars appear every ${c.powerupEverySeconds}s and vanish after ${c.powerupLifetimeSeconds}s:`
     ].join('\n'), style);
     const parts = [
@@ -488,13 +495,45 @@ class CoinDash extends Phaser.Scene {
       : `Mission: ${label}  ${m.progress}/${m.target}  (+${COIN_DASH.missionBonus})`);
   }
 
-  placeCoin() {
+  // A random point inside the current arena, `margin` away from its edges.
+  randomArenaPoint(margin) {
+    const b = this.physics.world.bounds;
+    return [Phaser.Math.Between(b.left + margin, b.right - margin),
+      Phaser.Math.Between(b.top + margin, b.bottom - margin)];
+  }
+
+  // Edges close in evenly with play time, down to arenaMinScale at the end of the round.
+  updateArena() {
     const c = COIN_DASH;
+    const progress = Math.min(1, this.playedMs / (c.roundSeconds * 1000));
+    const shrink = (1 - c.arenaMinScale) * progress / 2;
+    const fullHeight = c.height - 44;
+    const insetX = Math.round(c.width * shrink);
+    const insetY = Math.round(fullHeight * shrink);
+    if (insetX === this.arenaInset) return;
+    this.arenaInset = insetX;
+    const w = c.width - 2 * insetX, h = fullHeight - 2 * insetY;
+    const top = 44 + insetY;
+    // Bodies that collide with the world bounds are pushed back inside on the next physics step.
+    this.physics.world.setBounds(insetX, top, w, h);
+    this.arenaEdge.clear().fillStyle(0x2b2a33, 0.12)
+      .fillRect(0, 44, c.width, insetY)
+      .fillRect(0, top + h, c.width, insetY)
+      .fillRect(0, top, insetX, h)
+      .fillRect(insetX + w, top, insetX, h)
+      .lineStyle(2, 0x2b2a33, 0.8).strokeRect(insetX, top, w, h);
+    // Pickups left outside the new edge move back in (the coin) or vanish early (a power-up).
+    const b = this.physics.world.bounds;
+    const outside = o => o.x < b.left + 9 || o.x > b.right - 9 || o.y < b.top + 9 || o.y > b.bottom - 9;
+    if (outside(this.coin)) this.placeCoin();
+    if (this.powerup && this.powerup.visible && outside(this.powerup)) this.hidePowerup();
+  }
+
+  placeCoin() {
     // Avoid spawning the next coin directly underneath the player.
     let x, y;
     do {
-      x = Phaser.Math.Between(25, c.width - 25);
-      y = Phaser.Math.Between(70, c.height - 25);
+      [x, y] = this.randomArenaPoint(25);
     } while (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 60);
     this.coin.setPosition(x, y);
     this.coin.body.reset(x, y);
@@ -700,11 +739,11 @@ class CoinDash extends Phaser.Scene {
 
   showPowerup() {
     const c = COIN_DASH;
-    let x, y;
+    // Fall back to any arena point if the arena has become too small to keep the usual distance.
+    let x, y, tries = 0;
     do {
-      x = Phaser.Math.Between(25, c.width - 25);
-      y = Phaser.Math.Between(70, c.height - 25);
-    } while (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 120);
+      [x, y] = this.randomArenaPoint(25);
+    } while (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 120 && ++tries < 50);
     // Only one type exists so far; new types in settings.js join the random pick.
     this.powerup.kind = Phaser.Utils.Array.GetRandom(Object.keys(c.powerups));
     this.drawSticker(this.powerup.kind);
@@ -910,6 +949,8 @@ class CoinDash extends Phaser.Scene {
     this.updateFireworks(delta);
     if (this.finished || this.paused || this.countingDown) return;
     const now = this.time.now;
+    this.playedMs += delta;
+    this.updateArena();
     if (!this.powerup.visible && now >= this.powerupNextAt) this.showPowerup();
     if (this.powerup.visible && now >= this.powerupExpiresAt) this.hidePowerup();
     if (this.activePowerup && now >= this.powerupUntil) this.endPowerup();
