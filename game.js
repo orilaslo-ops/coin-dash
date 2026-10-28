@@ -4,6 +4,16 @@ const HAND_FONT = '"Chalkboard SE", "Comic Sans MS", "Marker Felt", cursive';
 // Chosen preset survives restarts; switching keys restart the round.
 let difficulty = COIN_DASH.difficulty;
 const DIFFICULTY_KEYS = { ONE: 'easy', TWO: 'normal', THREE: 'hard' };
+const INK = '#2b2a33';
+
+// Best score per difficulty lives in localStorage; storage can be blocked, so failures just read as 0.
+function bestScore(name) {
+  try { return Number(localStorage.getItem(`coinDash.best.${name}`)) || 0; } catch (e) { return 0; }
+}
+function saveBestScore(name, score) {
+  if (score <= bestScore(name)) return;
+  try { localStorage.setItem(`coinDash.best.${name}`, String(score)); } catch (e) { /* not saved */ }
+}
 
 class CoinDash extends Phaser.Scene {
   constructor() { super('CoinDash'); }
@@ -259,13 +269,35 @@ class CoinDash extends Phaser.Scene {
     if (this.finished) return;
     this.finished = true;
     this.physics.pause();
+    const best = bestScore(difficulty);
+    const newBest = this.score > best;
+    saveBestScore(difficulty, this.score);
     const c = COIN_DASH;
-    this.add.rectangle(c.width / 2, c.height / 2, 460, 150, c.colors.background, 0.95)
-      .setStrokeStyle(2, 0x2b2a33).setAngle(-1);
-    this.add.text(c.width / 2, c.height / 2,
-      `${reason}\n${this.score} coins collected\nPress R to try again`,
-      { fontFamily: HAND_FONT, fontSize: '24px', color: '#2b2a33', align: 'center', lineSpacing: 12 }
-    ).setOrigin(0.5).setAngle(-1);
+    const cx = c.width / 2, cy = c.height / 2;
+    const style = { fontFamily: HAND_FONT, fontSize: '24px', color: INK, align: 'center' };
+    this.add.rectangle(cx, cy, 460, 260, c.colors.background, 0.95)
+      .setStrokeStyle(2, 0x2b2a33).setAngle(-1).setDepth(10);
+    this.add.text(cx, cy - 90, reason, style).setOrigin(0.5).setDepth(11);
+    this.add.text(cx, cy - 45, `${this.score} coins`, { ...style, fontSize: '36px' })
+      .setOrigin(0.5).setDepth(11);
+    this.add.text(cx, cy + 5, newBest ? 'New best!' : `Best on ${c.difficulties[difficulty].label}: ${best}`,
+      { ...style, fontSize: '20px', fontStyle: newBest ? 'bold' : 'normal' }).setOrigin(0.5).setDepth(11);
+    this.gameOverButton(cx - 90, cy + 75, 'Again (R)', () => this.scene.restart());
+    this.gameOverButton(cx + 90, cy + 75, 'Menu (M)', () => this.goToMenu());
+    this.input.keyboard.on('keydown-M', () => this.goToMenu());
+  }
+
+  gameOverButton(x, y, label, onClick) {
+    this.add.text(x, y, label, { fontFamily: HAND_FONT, fontSize: '22px', color: INK,
+      padding: { x: 16, y: 6 }, backgroundColor: `#${COIN_DASH.colors.coin.toString(16).padStart(6, '0')}` })
+      .setOrigin(0.5).setDepth(11).setInteractive({ useHandCursor: true })
+      .on('pointerdown', onClick);
+  }
+
+  // The start screen is a separate feature; until it is merged, Menu just starts a new round.
+  goToMenu() {
+    if (this.scene.manager.getScene('StartScreen')) this.scene.start('StartScreen');
+    else this.scene.restart();
   }
 }
 window.coinDashGame = new Phaser.Game({
