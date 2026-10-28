@@ -4,6 +4,20 @@ const HAND_FONT = '"Chalkboard SE", "Comic Sans MS", "Marker Felt", cursive';
 // Chosen preset survives restarts; switching keys restart the round.
 let difficulty = COIN_DASH.difficulty;
 const DIFFICULTY_KEYS = { ONE: 'easy', TWO: 'normal', THREE: 'hard' };
+// Menu settings survive restarts and reloads; storage can be blocked, so fall back to defaults.
+const SETTINGS_KEY = 'coinDashSettings';
+const KEY_SCHEMES = Object.keys(COIN_DASH.keySchemeLabels);
+const playerSettings = { sound: COIN_DASH.sound, keyScheme: COIN_DASH.keyScheme };
+try {
+  Object.assign(playerSettings, JSON.parse(localStorage.getItem(SETTINGS_KEY)));
+} catch (e) { /* keep defaults */ }
+if (!KEY_SCHEMES.includes(playerSettings.keyScheme)) playerSettings.keyScheme = COIN_DASH.keyScheme;
+// Future sound effects can read this, or rely on Phaser's mute set in create().
+window.coinDashSettings = playerSettings;
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(playerSettings)); } catch (e) { /* not saved */ }
+}
+
 const INK = '#2b2a33';
 
 // Best score per difficulty lives in localStorage; storage can be blocked, so failures just read as 0.
@@ -143,14 +157,34 @@ class CoinDash extends Phaser.Scene {
     this.chaserAt = this.time.now + c.chaserDelaySeconds * 1000;
     this.cursors = this.input.keyboard.createCursorKeys();
     this.keys = this.input.keyboard.addKeys('W,A,S,D,R,P');
-    this.input.keyboard.on('keydown-R', () => this.scene.restart());
+    this.sound.mute = !playerSettings.sound;
+    this.settingsOpen = false;
+    // Game keys are ignored while the settings menu is open.
+    this.input.keyboard.on('keydown-R', () => { if (!this.settingsOpen) this.scene.restart(); });
     for (const [key, name] of Object.entries(DIFFICULTY_KEYS)) {
       this.input.keyboard.on(`keydown-${key}`, () => {
+        if (this.settingsOpen) return;
         difficulty = name;
         this.scene.restart();
       });
     }
-    this.input.keyboard.on('keydown-P', () => this.togglePause());
+    this.input.keyboard.on('keydown-P', () => { if (!this.settingsOpen) this.togglePause(); });
+    this.input.keyboard.on('keydown-O', () => this.toggleSettings());
+    this.input.keyboard.on('keydown-ESC', () => { if (this.settingsOpen) this.toggleSettings(); });
+    this.input.keyboard.on('keydown-M', () => {
+      if (!this.settingsOpen) return;
+      playerSettings.sound = !playerSettings.sound;
+      this.sound.mute = !playerSettings.sound;
+      saveSettings();
+      this.showSettings();
+    });
+    this.input.keyboard.on('keydown-K', () => {
+      if (!this.settingsOpen) return;
+      const next = (KEY_SCHEMES.indexOf(playerSettings.keyScheme) + 1) % KEY_SCHEMES.length;
+      playerSettings.keyScheme = KEY_SCHEMES[next];
+      saveSettings();
+      this.showSettings();
+    });
     this.pauseBox = this.add.rectangle(c.width / 2, c.height / 2, 460, 150, 0x0a1120, 0.95);
     this.pauseText = this.add.text(c.width / 2, c.height / 2, 'Paused\nPress P to resume',
       { font: '24px monospace', color: '#ffffff', align: 'center', lineSpacing: 12 }
@@ -163,6 +197,39 @@ class CoinDash extends Phaser.Scene {
     this.drawHud(this.time.now);
     this.freeze();
     this.startCountdown();
+    // Settings reuse the pause overlay's look; styling is left to the visuals owner.
+    this.settingsBox = this.add.rectangle(c.width / 2, c.height / 2, 460, 210, 0x0a1120, 0.95)
+      .setVisible(false).setDepth(12);
+    this.settingsText = this.add.text(c.width / 2, c.height / 2, '',
+      { font: '22px monospace', color: '#ffffff', align: 'center', lineSpacing: 12 }
+    ).setOrigin(0.5).setVisible(false).setDepth(13);
+  }
+
+  // Opening settings pauses the round; closing resumes it unless P had paused it first.
+  toggleSettings() {
+    // Like P, the menu waits for the countdown to finish.
+    if (this.countingDown) return;
+    this.settingsOpen = !this.settingsOpen;
+    if (this.settingsOpen) {
+      this.pausedBySettings = !this.paused && !this.finished;
+      if (this.pausedBySettings) this.togglePause();
+      this.showSettings();
+    } else if (this.pausedBySettings) {
+      this.togglePause();
+    }
+    this.settingsBox.setVisible(this.settingsOpen);
+    this.settingsText.setVisible(this.settingsOpen);
+    this.pauseBox.setVisible(this.paused && !this.settingsOpen);
+    this.pauseText.setVisible(this.paused && !this.settingsOpen);
+  }
+
+  showSettings() {
+    this.settingsText.setText([
+      'Settings',
+      `M  Sound: ${playerSettings.sound ? 'On' : 'Off'}`,
+      `K  Keys: ${COIN_DASH.keySchemeLabels[playerSettings.keyScheme]}`,
+      'O / Esc to close'
+    ].join('\n'));
   }
 
   loseLife() {
@@ -335,10 +402,11 @@ class CoinDash extends Phaser.Scene {
     if (this.activePowerup && now >= this.powerupUntil) this.endPowerup();
     if (!this.chaser && now >= this.chaserAt) this.spawnChaser();
     if (this.chaser) this.steerChaser(delta);
-    const dx = Number(this.cursors.right.isDown || this.keys.D.isDown)
-      - Number(this.cursors.left.isDown || this.keys.A.isDown);
-    const dy = Number(this.cursors.down.isDown || this.keys.S.isDown)
-      - Number(this.cursors.up.isDown || this.keys.W.isDown);
+    const arrows = playerSettings.keyScheme !== 'wasd';
+    const wasd = playerSettings.keyScheme !== 'arrows';
+    const held = (arrow, letter) => (arrows && arrow.isDown) || (wasd && letter.isDown);
+    const dx = Number(held(this.cursors.right, this.keys.D)) - Number(held(this.cursors.left, this.keys.A));
+    const dy = Number(held(this.cursors.down, this.keys.S)) - Number(held(this.cursors.up, this.keys.W));
     const speed = COIN_DASH.playerSpeed
       * (this.activePowerup === 'speed' ? COIN_DASH.powerups.speed.multiplier : 1);
     const direction = new Phaser.Math.Vector2(dx, dy).normalize().scale(speed);
@@ -376,7 +444,8 @@ class CoinDash extends Phaser.Scene {
       { ...style, fontSize: '20px', fontStyle: newBest ? 'bold' : 'normal' }).setOrigin(0.5).setDepth(11);
     this.gameOverButton(cx - 90, cy + 75, 'Again (R)', () => this.scene.restart());
     this.gameOverButton(cx + 90, cy + 75, 'Menu (M)', () => this.goToMenu());
-    this.input.keyboard.on('keydown-M', () => this.goToMenu());
+    // M is also the sound toggle inside settings, so it only means Menu while settings are closed.
+    this.input.keyboard.on('keydown-M', () => { if (!this.settingsOpen) this.goToMenu(); });
   }
 
   gameOverButton(x, y, label, onClick) {
