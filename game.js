@@ -112,12 +112,18 @@ class CoinDash extends Phaser.Scene {
       });
     }
     this.input.keyboard.on('keydown-P', () => this.togglePause());
-    this.pauseBox = this.add.rectangle(c.width / 2, c.height / 2, 460, 150, 0x0a1120, 0.95);
-    this.pauseText = this.add.text(c.width / 2, c.height / 2, 'Paused\nPress P to resume',
-      { font: '24px monospace', color: '#ffffff', align: 'center', lineSpacing: 12 }
-    ).setOrigin(0.5);
-    this.pauseBox.setVisible(false).setDepth(10);
-    this.pauseText.setVisible(false).setDepth(11);
+    const ink = { fontFamily: HAND_FONT, color: '#2b2a33' };
+    this.pauseText = this.add.text(0, -18, 'PAUSED', { ...ink, fontSize: '56px' }).setOrigin(0.5);
+    const card = this.add.container(c.width / 2, c.height / 2, [
+      this.add.rectangle(0, 0, 460, 170, c.colors.background).setStrokeStyle(2, 0x2b2a33),
+      this.add.rectangle(-225, -80, 80, 24, 0xe6d6a0, 0.8).setAngle(-35),
+      this.add.rectangle(225, -80, 80, 24, 0xe6d6a0, 0.8).setAngle(35),
+      this.pauseText,
+      this.add.text(0, 45, 'press P to resume', { ...ink, fontSize: '22px' }).setOrigin(0.5)
+    ]).setAngle(-2);
+    this.pauseBox = this.add.container(0, 0, [
+      this.add.rectangle(0, 0, c.width, c.height, c.colors.background, 0.7).setOrigin(0), card
+    ]).setVisible(false).setDepth(10);
   }
 
   loseLife() {
