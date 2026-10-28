@@ -71,6 +71,9 @@ class CoinDash extends Phaser.Scene {
   create() {
     const c = COIN_DASH;
     const preset = c.difficulties[difficulty];
+    // This scene's clock was booted with the game and is stale after the start screen; sync it
+    // so the round timers below do not lose the time spent on the start screen.
+    this.time.now = this.game.loop.time;
     this.score = 0;
     this.lives = c.startLives;
     this.invulnerableUntil = 0;
