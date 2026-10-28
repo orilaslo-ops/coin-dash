@@ -142,3 +142,29 @@ window.coinDashGame = new Phaser.Game({
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_HORIZONTALLY },
   scene: CoinDash
 });
+// Background music: a looping square-wave tune, started once per page on the first key press
+// (browsers block audio before a user gesture). It lives outside the scene, so R never restarts it.
+const MUSIC_NOTES = [523, 659, 784, 659, 587, 698, 880, 698, 523, 659, 784, 1047, 988, 784, 587, 0];
+window.addEventListener('keydown', () => {
+  const ctx = new AudioContext();
+  const volume = ctx.createGain();
+  volume.gain.value = 0.03;
+  volume.connect(ctx.destination);
+  const step = 0.18;
+  let next = ctx.currentTime + 0.05, i = 0;
+  // Schedule notes ahead on the audio clock so the loop stays gapless even if timers jitter.
+  setInterval(() => {
+    for (; next < ctx.currentTime + 1.5; next += step, i = (i + 1) % MUSIC_NOTES.length) {
+      if (!MUSIC_NOTES[i]) continue;
+      const osc = ctx.createOscillator();
+      const env = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = MUSIC_NOTES[i];
+      env.gain.setValueAtTime(1, next);
+      env.gain.exponentialRampToValueAtTime(0.001, next + step * 0.9);
+      osc.connect(env).connect(volume);
+      osc.start(next);
+      osc.stop(next + step);
+    }
+  }, 250);
+}, { once: true });
