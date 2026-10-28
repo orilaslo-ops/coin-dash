@@ -5,13 +5,22 @@ window.COIN_DASH = {
   roundSeconds: 45,
   countdownSeconds: 3, // 3-2-1 before the round starts and after unpausing
   playerSpeed: 240,
-  // Difficulty presets: press 1/2/3 in game to switch. Each preset sets drone count and speed.
+  // Difficulty presets: press 1/2/3 in game to switch. Each preset sets drone count and speed,
+  // plus how many patrol drones (fixed loop) and blink drones (vanish and reappear) join in.
   difficulty: 'normal',
   difficulties: {
-    easy:   { label: 'Easy',   droneCount: 2, droneSpeed: 80 },
-    normal: { label: 'Normal', droneCount: 3, droneSpeed: 105 },
-    hard:   { label: 'Hard',   droneCount: 5, droneSpeed: 140 }
+    easy:   { label: 'Easy',   droneCount: 2, droneSpeed: 80,  patrolCount: 1, blinkCount: 0 },
+    normal: { label: 'Normal', droneCount: 3, droneSpeed: 105, patrolCount: 1, blinkCount: 1 },
+    hard:   { label: 'Hard',   droneCount: 5, droneSpeed: 140, patrolCount: 2, blinkCount: 1 }
   },
+  // Patrol drones loop through these points in order; several patrols start spread along the loop.
+  patrolSpeed: 110,
+  patrolPath: [[150, 130], [650, 130], [650, 420], [150, 420]],
+  // Blink drones bounce like normal drones, vanish every few seconds, and show a harmless faded
+  // warning at their next spot for blinkWarnMs before they become solid there.
+  blinkVisibleSeconds: 4,
+  blinkHiddenMs: 700,
+  blinkWarnMs: 600,
   // Defaults for the settings menu (O in game); the player's choice is remembered in the browser.
   // keyScheme: 'both', 'arrows' or 'wasd'. sound only stores the choice until sound effects exist.
   sound: true,
