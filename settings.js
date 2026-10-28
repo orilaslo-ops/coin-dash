@@ -34,6 +34,9 @@ window.COIN_DASH = {
   // The arena's edges close in evenly over the round; by roundSeconds it is this fraction of its
   // full width and height, and it stays that size for any bonus time.
   arenaMinScale: 0.55,
+  // Two linked portals: step into one and come out of the other. Only the player teleports.
+  portals: [[110, 280], [690, 280]],
+  portalRadius: 22,
   powerupEverySeconds: 10,
   powerupLifetimeSeconds: 6,
   // Each power-up type: what the HUD calls it and how long its effect lasts.
@@ -55,7 +58,7 @@ window.COIN_DASH = {
     boosted: { label: 'Collect {n} coins while a power-up is active', target: 2 }
   },
   colors: {
-    background: 0xf4efe1, player: 0x5f9c8f, coin: 0xd8b04a, drone: 0xc4574d,
+    background: 0xf4efe1, player: 0x5f9c8f, coin: 0xd8b04a, drone: 0xc4574d, portal: 0x7a5cc4,
     powerups: { speed: 0x2f6fd6, shield: 0x8657c9, slow: 0x3e9a4b, time: 0xe08a2e, magnet: 0xff8fb1 }
   }
 };
