@@ -106,6 +106,11 @@ class CoinDash extends Phaser.Scene {
     for (let x = 40; x < c.width; x += 40) lines.lineBetween(x, 0, x + Math.sin(x) * 3, c.height);
     for (let y = 40; y < c.height; y += 40) lines.lineBetween(0, y, c.width, y + Math.cos(y) * 3);
     this.hud = this.add.text(18, 12, '', { fontFamily: HAND_FONT, fontSize: '18px', color: '#2b2a33' });
+    // Plain rings drawn under the player; their look is left to the visuals owner.
+    this.portals = c.portals.map(([x, y]) =>
+      this.add.circle(x, y, c.portalRadius).setStrokeStyle(4, c.colors.portal));
+    // The portal the player just came out of; it stays inactive until the player steps off it.
+    this.portalExit = null;
     this.player = this.add.rectangle(c.width / 2, c.height / 2, 24, 24, c.colors.player)
       .setStrokeStyle(2, 0x2b2a33);
     this.physics.add.existing(this.player);
@@ -258,6 +263,7 @@ class CoinDash extends Phaser.Scene {
       `and after ${c.chaserDelaySeconds}s a red diamond starts chasing you.`,
       `A hit costs one of your ${c.startLives} lives, then you blink and are safe`,
       `for ${c.hitInvulnerableMs / 1000}s. Lose them all and the round ends.`,
+      'Step into a purple ring to come out of the other one.',
       `Power-up stars appear every ${c.powerupEverySeconds}s and vanish after ${c.powerupLifetimeSeconds}s:`
     ].join('\n'), style);
     const parts = [
@@ -319,9 +325,28 @@ class CoinDash extends Phaser.Scene {
     do {
       x = Phaser.Math.Between(25, c.width - 25);
       y = Phaser.Math.Between(70, c.height - 25);
-    } while (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 60);
+    } while (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 60 || this.onPortal(x, y));
     this.coin.setPosition(x, y);
     this.coin.body.reset(x, y);
+  }
+
+  // Coins and power-ups keep clear of the portals so they can be picked up without teleporting.
+  onPortal(x, y) {
+    return this.portals.some(p => Phaser.Math.Distance.Between(x, y, p.x, p.y) < COIN_DASH.portalRadius + 30);
+  }
+
+  // The player's centre entering a portal moves them to the other one.
+  usePortals() {
+    const near = p => Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y) < COIN_DASH.portalRadius;
+    if (this.portalExit) {
+      if (!near(this.portalExit)) this.portalExit = null;
+      return;
+    }
+    const from = this.portals.find(near);
+    if (!from) return;
+    const to = this.portals[1 - this.portals.indexOf(from)];
+    this.player.body.reset(to.x, to.y);
+    this.portalExit = to;
   }
 
   collectEffect(x, y) {
@@ -390,7 +415,7 @@ class CoinDash extends Phaser.Scene {
     do {
       x = Phaser.Math.Between(25, c.width - 25);
       y = Phaser.Math.Between(70, c.height - 25);
-    } while (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 120);
+    } while (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 120 || this.onPortal(x, y));
     // Only one type exists so far; new types in settings.js join the random pick.
     this.powerup.kind = Phaser.Utils.Array.GetRandom(Object.keys(c.powerups));
     this.powerup.setFillStyle(c.colors.powerups[this.powerup.kind]);
@@ -473,6 +498,7 @@ class CoinDash extends Phaser.Scene {
       * (this.activePowerup === 'speed' ? COIN_DASH.powerups.speed.multiplier : 1);
     const direction = new Phaser.Math.Vector2(dx, dy).normalize().scale(speed);
     this.player.body.setVelocity(direction.x, direction.y);
+    this.usePortals();
     if (this.drawHud(now) === 0) this.finish('Time is up!');
   }
 

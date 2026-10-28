@@ -22,6 +22,9 @@ window.COIN_DASH = {
   chaserSpeed: 130,
   chaserDelaySeconds: 5,
   chaserTurnRate: 2.5, // how quickly the chaser steers toward the player (per second)
+  // Two linked portals: step into one and come out of the other. Only the player teleports.
+  portals: [[110, 280], [690, 280]],
+  portalRadius: 22,
   powerupEverySeconds: 10,
   powerupLifetimeSeconds: 6,
   // Each power-up type: what the HUD calls it and how long its effect lasts.
@@ -33,7 +36,7 @@ window.COIN_DASH = {
     time: { bonus: 5 }
   },
   colors: {
-    background: 0xf4efe1, player: 0x5f9c8f, coin: 0xd8b04a, drone: 0xc4574d,
+    background: 0xf4efe1, player: 0x5f9c8f, coin: 0xd8b04a, drone: 0xc4574d, portal: 0x7a5cc4,
     powerups: { speed: 0x7fb2ff, shield: 0xc9a7ff, slow: 0x9cf28a, time: 0xffffff }
   }
 };
