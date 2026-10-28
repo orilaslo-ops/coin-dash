@@ -3,6 +3,7 @@ window.COIN_DASH = {
   width: 800,
   height: 500,
   roundSeconds: 45,
+  countdownSeconds: 3, // 3-2-1 before the round starts and after unpausing
   playerSpeed: 240,
   // Difficulty presets: press 1/2/3 in game to switch. Each preset sets drone count and speed.
   difficulty: 'normal',
@@ -11,6 +12,11 @@ window.COIN_DASH = {
     normal: { label: 'Normal', droneCount: 3, droneSpeed: 105 },
     hard:   { label: 'Hard',   droneCount: 5, droneSpeed: 140 }
   },
+  // Defaults for the settings menu (O in game); the player's choice is remembered in the browser.
+  // keyScheme: 'both', 'arrows' or 'wasd'. sound only stores the choice until sound effects exist.
+  sound: true,
+  keyScheme: 'both',
+  keySchemeLabels: { both: 'Arrows + WASD', arrows: 'Arrows', wasd: 'WASD' },
   startLives: 3,
   hitInvulnerableMs: 1500,
   chaserSpeed: 130,
