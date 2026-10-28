@@ -15,10 +15,22 @@ class CoinDash extends Phaser.Scene {
     for (let x = 40; x < c.width; x += 40) lines.lineBetween(x, 0, x + Math.sin(x) * 3, c.height);
     for (let y = 40; y < c.height; y += 40) lines.lineBetween(0, y, c.width, y + Math.cos(y) * 3);
     this.hud = this.add.text(18, 12, '', { fontFamily: HAND_FONT, fontSize: '18px', color: '#2b2a33' });
-    this.player = this.add.rectangle(c.width / 2, c.height / 2, 24, 24, c.colors.player)
-      .setStrokeStyle(2, 0x2b2a33);
+    // Unfilled 24x24 rectangle keeps the hit box; the ship below is visual only.
+    this.player = this.add.rectangle(c.width / 2, c.height / 2, 24, 24);
     this.physics.add.existing(this.player);
     this.player.body.setCollideWorldBounds(true);
+    const hull = [{ x: 13, y: 0 }, { x: -11, y: -11 }, { x: -5, y: 0 }, { x: -11, y: 11 }];
+    this.ship = this.add.graphics().fillStyle(c.colors.player).fillPoints(hull, true)
+      .lineStyle(2, 0x2b2a33).strokePoints(hull, true)
+      .fillStyle(0x2b2a33).fillCircle(2, 0, 3.5).setRotation(-Math.PI / 2);
+    // Follow after physics so the ship never lags the body; keep last heading when stopped.
+    const followPlayer = () => {
+      const v = this.player.body.velocity;
+      this.ship.setPosition(this.player.x, this.player.y).setVisible(this.player.visible);
+      if (v.x || v.y) this.ship.setRotation(Math.atan2(v.y, v.x));
+    };
+    this.events.on('postupdate', followPlayer);
+    this.events.once('shutdown', () => this.events.off('postupdate', followPlayer));
     this.coin = this.add.circle(100, 100, 9, c.colors.coin).setStrokeStyle(2, 0x2b2a33);
     this.physics.add.existing(this.coin);
     this.coin.body.setCircle(9);
