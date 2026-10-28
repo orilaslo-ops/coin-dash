@@ -5,6 +5,8 @@ class CoinDash extends Phaser.Scene {
   create() {
     const c = COIN_DASH;
     this.score = 0;
+    this.lives = c.startLives;
+    this.invulnerableUntil = 0;
     this.finished = false;
     this.deadline = this.time.now + c.roundSeconds * 1000;
     this.physics.world.setBounds(0, 44, c.width, c.height - 44);
@@ -31,10 +33,28 @@ class CoinDash extends Phaser.Scene {
       this.score++;
       this.placeCoin();
     });
-    this.physics.add.overlap(this.player, this.drones, () => this.finish('A drone caught you!'));
+    this.physics.add.overlap(this.player, this.drones, () => this.loseLife());
     this.cursors = this.input.keyboard.createCursorKeys();
     this.keys = this.input.keyboard.addKeys('W,A,S,D,R');
     this.input.keyboard.on('keydown-R', () => this.scene.restart());
+  }
+
+  loseLife() {
+    if (this.finished || this.time.now < this.invulnerableUntil) return;
+    this.lives--;
+    if (this.lives <= 0) {
+      this.hud.setText(this.hud.text.replace(/Lives: \d+/, 'Lives: 0'));
+      this.finish('A drone caught you!');
+      return;
+    }
+    // Brief invulnerability so one touch cannot drain every life; blinking only toggles visibility.
+    this.invulnerableUntil = this.time.now + COIN_DASH.hitInvulnerableMs;
+    this.time.addEvent({
+      delay: 125,
+      repeat: Math.floor(COIN_DASH.hitInvulnerableMs / 125) - 1,
+      callback: () => this.player.setVisible(!this.player.visible)
+    });
+    this.time.delayedCall(COIN_DASH.hitInvulnerableMs, () => this.player.setVisible(true));
   }
 
   placeCoin() {
@@ -58,7 +78,7 @@ class CoinDash extends Phaser.Scene {
     const direction = new Phaser.Math.Vector2(dx, dy).normalize().scale(COIN_DASH.playerSpeed);
     this.player.body.setVelocity(direction.x, direction.y);
     const seconds = Math.max(0, Math.ceil((this.deadline - this.time.now) / 1000));
-    this.hud.setText(`Coins: ${this.score}                       Time: ${seconds}s`);
+    this.hud.setText(`Coins: ${this.score}          Lives: ${this.lives}          Time: ${seconds}s`);
     if (seconds === 0) this.finish('Time is up!');
   }
 
