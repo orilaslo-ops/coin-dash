@@ -9,8 +9,15 @@ window.COIN_DASH = {
   powerupEverySeconds: 10,
   powerupLifetimeSeconds: 6,
   // Each power-up type: what the HUD calls it and how long its effect lasts.
+  // 'time' is instant: it adds `bonus` seconds to the clock.
   powerups: {
-    speed: { label: 'Speed', seconds: 5, multiplier: 1.6 }
+    speed: { label: 'Speed', seconds: 5, multiplier: 1.6 },
+    shield: { label: 'Shield', seconds: 5 },
+    slow: { label: 'Slow drones', seconds: 5, multiplier: 0.5 },
+    time: { bonus: 5 }
   },
-  colors: { background: 0x101c31, player: 0x71e8ce, coin: 0xffd166, drone: 0xff657a, powerup: 0x7fb2ff }
+  colors: {
+    background: 0x101c31, player: 0x71e8ce, coin: 0xffd166, drone: 0xff657a,
+    powerups: { speed: 0x7fb2ff, shield: 0xc9a7ff, slow: 0x9cf28a, time: 0xffffff }
+  }
 };

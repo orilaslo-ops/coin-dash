@@ -24,7 +24,7 @@ class CoinDash extends Phaser.Scene {
     this.physics.add.existing(this.coin);
     this.coin.body.setCircle(9);
     this.placeCoin();
-    this.powerup = this.add.star(0, 0, 5, 6, 13, c.colors.powerup).setVisible(false);
+    this.powerup = this.add.star(0, 0, 5, 6, 13, 0xffffff).setVisible(false);
     this.physics.add.existing(this.powerup);
     this.powerup.body.setCircle(12, 1, 1).setEnable(false);
     this.drones = this.physics.add.group();
@@ -43,10 +43,12 @@ class CoinDash extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.powerup, () => {
       if (this.finished || !this.powerup.visible) return;
       this.hidePowerup();
-      this.activePowerup = this.powerup.kind;
-      this.powerupUntil = this.time.now + c.powerups[this.activePowerup].seconds * 1000;
+      this.startPowerup(this.powerup.kind);
     });
-    this.physics.add.overlap(this.player, this.drones, () => this.finish('A drone caught you!'));
+    this.physics.add.overlap(this.player, this.drones, () => {
+      if (this.activePowerup === 'shield') return;
+      this.finish('A drone caught you!');
+    });
     this.cursors = this.input.keyboard.createCursorKeys();
     this.keys = this.input.keyboard.addKeys('W,A,S,D,R,P');
     this.input.keyboard.on('keydown-R', () => this.scene.restart());
@@ -98,6 +100,7 @@ class CoinDash extends Phaser.Scene {
     } while (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 120);
     // Only one type exists so far; new types in settings.js join the random pick.
     this.powerup.kind = Phaser.Utils.Array.GetRandom(Object.keys(c.powerups));
+    this.powerup.setFillStyle(c.colors.powerups[this.powerup.kind]);
     this.powerup.setPosition(x, y).setVisible(true);
     this.powerup.body.reset(x, y);
     this.powerup.body.setEnable(true);
@@ -110,12 +113,34 @@ class CoinDash extends Phaser.Scene {
     this.powerupNextAt = this.time.now + COIN_DASH.powerupEverySeconds * 1000;
   }
 
+  // Speed and shield are checked where they apply; slow and time act here.
+  startPowerup(kind) {
+    const p = COIN_DASH.powerups[kind];
+    this.endPowerup();
+    if (kind === 'time') {
+      this.deadline += p.bonus * 1000;
+      return;
+    }
+    if (kind === 'slow') this.scaleDrones(p.multiplier);
+    this.activePowerup = kind;
+    this.powerupUntil = this.time.now + p.seconds * 1000;
+  }
+
+  endPowerup() {
+    if (this.activePowerup === 'slow') this.scaleDrones(1 / COIN_DASH.powerups.slow.multiplier);
+    this.activePowerup = null;
+  }
+
+  scaleDrones(factor) {
+    this.drones.getChildren().forEach(d => d.body.velocity.scale(factor));
+  }
+
   update() {
     if (this.finished || this.paused) return;
     const now = this.time.now;
     if (!this.powerup.visible && now >= this.powerupNextAt) this.showPowerup();
     if (this.powerup.visible && now >= this.powerupExpiresAt) this.hidePowerup();
-    if (this.activePowerup && now >= this.powerupUntil) this.activePowerup = null;
+    if (this.activePowerup && now >= this.powerupUntil) this.endPowerup();
     const dx = Number(this.cursors.right.isDown || this.keys.D.isDown)
       - Number(this.cursors.left.isDown || this.keys.A.isDown);
     const dy = Number(this.cursors.down.isDown || this.keys.S.isDown)
