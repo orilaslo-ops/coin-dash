@@ -1,4 +1,6 @@
 /* global Phaser, COIN_DASH */
+// System hand-written fonts only; no external font files.
+const HAND_FONT = '"Chalkboard SE", "Comic Sans MS", "Marker Felt", cursive';
 class CoinDash extends Phaser.Scene {
   constructor() { super('CoinDash'); }
 
@@ -8,19 +10,23 @@ class CoinDash extends Phaser.Scene {
     this.finished = false;
     this.deadline = this.time.now + c.roundSeconds * 1000;
     this.physics.world.setBounds(0, 44, c.width, c.height - 44);
-    this.add.grid(c.width / 2, c.height / 2, c.width, c.height, 40, 40,
-      c.colors.background, 1, 0x24334b, 0.45);
-    this.hud = this.add.text(18, 12, '', { font: '18px monospace', color: '#ffffff' });
-    this.player = this.add.rectangle(c.width / 2, c.height / 2, 24, 24, c.colors.player);
+    // Slightly uneven pencil grid, drawn once so the paper look stays static.
+    const lines = this.add.graphics().lineStyle(1, 0x5a6b8c, 0.25);
+    for (let x = 40; x < c.width; x += 40) lines.lineBetween(x, 0, x + Math.sin(x) * 3, c.height);
+    for (let y = 40; y < c.height; y += 40) lines.lineBetween(0, y, c.width, y + Math.cos(y) * 3);
+    this.hud = this.add.text(18, 12, '', { fontFamily: HAND_FONT, fontSize: '18px', color: '#2b2a33' });
+    this.player = this.add.rectangle(c.width / 2, c.height / 2, 24, 24, c.colors.player)
+      .setStrokeStyle(2, 0x2b2a33);
     this.physics.add.existing(this.player);
     this.player.body.setCollideWorldBounds(true);
-    this.coin = this.add.circle(100, 100, 9, c.colors.coin);
+    this.coin = this.add.circle(100, 100, 9, c.colors.coin).setStrokeStyle(2, 0x2b2a33);
     this.physics.add.existing(this.coin);
     this.coin.body.setCircle(9);
     this.placeCoin();
     this.drones = this.physics.add.group();
     for (let i = 0; i < c.droneCount; i++) {
-      const drone = this.add.rectangle(90 + i * 270, 100, 26, 26, c.colors.drone);
+      const drone = this.add.rectangle(90 + i * 270, 100, 26, 26, c.colors.drone)
+        .setStrokeStyle(2, 0x2b2a33);
       this.drones.add(drone);
       drone.body.setCollideWorldBounds(true).setBounce(1, 1);
       const angle = (35 + i * 105) * Math.PI / 180;
@@ -67,11 +73,12 @@ class CoinDash extends Phaser.Scene {
     this.finished = true;
     this.physics.pause();
     const c = COIN_DASH;
-    this.add.rectangle(c.width / 2, c.height / 2, 460, 150, 0x0a1120, 0.95);
+    this.add.rectangle(c.width / 2, c.height / 2, 460, 150, c.colors.background, 0.95)
+      .setStrokeStyle(2, 0x2b2a33).setAngle(-1);
     this.add.text(c.width / 2, c.height / 2,
       `${reason}\n${this.score} coins collected\nPress R to try again`,
-      { font: '24px monospace', color: '#ffffff', align: 'center', lineSpacing: 12 }
-    ).setOrigin(0.5);
+      { fontFamily: HAND_FONT, fontSize: '24px', color: '#2b2a33', align: 'center', lineSpacing: 12 }
+    ).setOrigin(0.5).setAngle(-1);
   }
 }
 window.coinDashGame = new Phaser.Game({
