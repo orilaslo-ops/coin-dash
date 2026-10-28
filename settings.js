@@ -13,6 +13,9 @@ window.COIN_DASH = {
   },
   startLives: 3,
   hitInvulnerableMs: 1500,
+  chaserSpeed: 130,
+  chaserDelaySeconds: 5,
+  chaserTurnRate: 2.5, // how quickly the chaser steers toward the player (per second)
   powerupEverySeconds: 10,
   powerupLifetimeSeconds: 6,
   // Each power-up type: what the HUD calls it and how long its effect lasts.

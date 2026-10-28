@@ -74,6 +74,9 @@ class CoinDash extends Phaser.Scene {
       if (this.activePowerup === 'shield') return;
       this.loseLife();
     });
+    // Spawn time is a timestamp so pausing can shift it like the other timers.
+    this.chaser = null;
+    this.chaserAt = this.time.now + c.chaserDelaySeconds * 1000;
     this.cursors = this.input.keyboard.createCursorKeys();
     this.keys = this.input.keyboard.addKeys('W,A,S,D,R,P');
     this.input.keyboard.on('keydown-R', () => this.scene.restart());
@@ -148,6 +151,7 @@ class CoinDash extends Phaser.Scene {
       this.powerupNextAt += pausedFor;
       this.powerupExpiresAt += pausedFor;
       this.powerupUntil += pausedFor;
+      this.chaserAt += pausedFor;
       this.physics.resume();
     }
     this.pauseBox.setVisible(this.paused);
@@ -198,12 +202,42 @@ class CoinDash extends Phaser.Scene {
     this.drones.getChildren().forEach(d => d.body.velocity.scale(factor));
   }
 
-  update() {
+  spawnChaser() {
+    if (this.finished) return;
+    const c = COIN_DASH;
+    // Start in the corner farthest from the player so it never spawns on top of them.
+    const corners = [[30, 74], [c.width - 30, 74], [30, c.height - 30], [c.width - 30, c.height - 30]];
+    const [x, y] = corners.reduce((best, p) =>
+      Phaser.Math.Distance.Between(p[0], p[1], this.player.x, this.player.y)
+        > Phaser.Math.Distance.Between(best[0], best[1], this.player.x, this.player.y) ? p : best);
+    this.chaser = this.add.rectangle(x, y, 22, 22, c.colors.drone).setAngle(45);
+    this.physics.add.existing(this.chaser);
+    this.chaser.body.setCollideWorldBounds(true);
+    // The chaser follows the same hit rules as the other drones: shield blocks it, a hit costs a life.
+    this.physics.add.overlap(this.player, this.chaser, () => {
+      if (this.activePowerup === 'shield') return;
+      this.loseLife();
+    });
+  }
+
+  steerChaser(delta) {
+    const c = COIN_DASH;
+    const toPlayer = new Phaser.Math.Vector2(this.player.x - this.chaser.x, this.player.y - this.chaser.y)
+      .normalize().scale(c.chaserSpeed);
+    // Blend toward the wanted direction so the chaser lags on sharp turns and can be dodged.
+    const t = Math.min(1, c.chaserTurnRate * delta / 1000);
+    const v = this.chaser.body.velocity;
+    this.chaser.body.setVelocity(v.x + (toPlayer.x - v.x) * t, v.y + (toPlayer.y - v.y) * t);
+  }
+
+  update(time, delta) {
     if (this.finished || this.paused) return;
     const now = this.time.now;
     if (!this.powerup.visible && now >= this.powerupNextAt) this.showPowerup();
     if (this.powerup.visible && now >= this.powerupExpiresAt) this.hidePowerup();
     if (this.activePowerup && now >= this.powerupUntil) this.endPowerup();
+    if (!this.chaser && now >= this.chaserAt) this.spawnChaser();
+    if (this.chaser) this.steerChaser(delta);
     const dx = Number(this.cursors.right.isDown || this.keys.D.isDown)
       - Number(this.cursors.left.isDown || this.keys.A.isDown);
     const dy = Number(this.cursors.down.isDown || this.keys.S.isDown)
