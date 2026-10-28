@@ -29,6 +29,7 @@ class CoinDash extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.coin, () => {
       if (this.finished) return;
       this.score++;
+      this.collectEffect(this.coin.x, this.coin.y);
       this.placeCoin();
     });
     this.physics.add.overlap(this.player, this.drones, () => this.finish('A drone caught you!'));
@@ -47,6 +48,20 @@ class CoinDash extends Phaser.Scene {
     } while (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 60);
     this.coin.setPosition(x, y);
     this.coin.body.reset(x, y);
+  }
+
+  collectEffect(x, y) {
+    const color = COIN_DASH.colors.coin;
+    for (let i = 0; i < 8; i++) {
+      const angle = i * Math.PI / 4;
+      const spark = this.add.circle(x, y, 3, color);
+      this.tweens.add({ targets: spark, x: x + Math.cos(angle) * 28, y: y + Math.sin(angle) * 28,
+        alpha: 0, scale: 0.3, duration: 400, onComplete: () => spark.destroy() });
+    }
+    const label = this.add.text(x, y, '+1',
+      { font: '16px monospace', color: `#${color.toString(16).padStart(6, '0')}` }).setOrigin(0.5);
+    this.tweens.add({ targets: label, y: y - 30, alpha: 0, duration: 500,
+      onComplete: () => label.destroy() });
   }
 
   update() {
