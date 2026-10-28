@@ -242,7 +242,8 @@ class CoinDash extends Phaser.Scene {
     const [x, y] = corners.reduce((best, p) =>
       Phaser.Math.Distance.Between(p[0], p[1], this.player.x, this.player.y)
         > Phaser.Math.Distance.Between(best[0], best[1], this.player.x, this.player.y) ? p : best);
-    this.chaser = this.add.rectangle(x, y, 22, 22, c.colors.drone).setAngle(45);
+    const redInk = 0x9e1b22;
+    this.chaser = this.add.rectangle(x, y, 22, 22, c.colors.drone).setStrokeStyle(2, redInk).setAngle(45);
     this.physics.add.existing(this.chaser);
     this.chaser.body.setCollideWorldBounds(true);
     // The chaser follows the same hit rules as the other drones: shield blocks it, a hit costs a life.
@@ -250,6 +251,31 @@ class CoinDash extends Phaser.Scene {
       if (this.activePowerup === 'shield') return;
       this.loseLife();
     });
+    // Body-less doodles drawn over the chaser: scribbled motion lines (local +x = heading),
+    // angry brows and an eye whose pupil looks at the player.
+    const streaks = this.add.graphics().lineStyle(2, 0x2b2a33, 0.6);
+    [[-6, -30], [0, -36], [6, -28]].forEach(([dy, end]) =>
+      streaks.strokePoints([{ x: -19, y: dy }, { x: (end - 19) / 2, y: dy + 1.5 }, { x: end, y: dy - 1 }]));
+    const face = this.add.graphics().lineStyle(2, 0x2b2a33)
+      .lineBetween(-8, -8, -1, -4).lineBetween(1, -4, 8, -7.5)
+      .fillStyle(0xffffff).fillCircle(0, 2, 4.5).lineStyle(1.5, 0x2b2a33).strokeCircle(0, 2, 4.5);
+    const pupil = this.add.circle(0, 0, 2, 0x2b2a33);
+    const followChaser = () => {
+      const { x: cx, y: cy } = this.chaser;
+      const v = this.chaser.body.velocity;
+      const look = Math.atan2(this.player.y - cy, this.player.x - cx);
+      face.setPosition(cx, cy);
+      pupil.setPosition(cx + Math.cos(look) * 2.5, cy + 2 + Math.sin(look) * 2.5);
+      streaks.setPosition(cx, cy).setVisible(v.x !== 0 || v.y !== 0).setRotation(Math.atan2(v.y, v.x));
+    };
+    followChaser();
+    this.events.on('postupdate', followChaser);
+    this.events.once('shutdown', () => this.events.off('postupdate', followChaser));
+    // Visual-only "!" next to the spawn corner, nudged toward the field; gone after about 1 s.
+    const warn = this.add.text(x + (x < c.width / 2 ? 24 : -24), y + (y < c.height / 2 ? 22 : -22), '!',
+      { fontFamily: HAND_FONT, fontSize: '26px', color: '#9e1b22' }).setOrigin(0.5).setAngle(-10);
+    const ring = this.add.ellipse(warn.x, warn.y, 30, 26).setStrokeStyle(2, redInk).setAngle(-10);
+    this.time.delayedCall(1000, () => { warn.destroy(); ring.destroy(); });
   }
 
   steerChaser(delta) {
